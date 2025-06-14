@@ -21,13 +21,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           
+      - name: Prepare files
+        run: |
+          mkdir -p deploy_files
+          cp pihole6_exporter deploy_files/
+          cp pihole6_exporter.service deploy_files/
+          cp requirements.txt deploy_files/
+          
       - name: Deploy to Raspberry Pi
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.PIHOLE_HOST }}
           username: ${{ secrets.PIHOLE_USER }}
           key: ${{ secrets.PIHOLE_SSH_KEY }}
-          source: "pihole6_exporter,pihole6_exporter.service,requirements.txt"
+          source: "deploy_files"
           target: "/tmp/pihole6_exporter"
           script: |
             # Create directory if it doesn't exist
