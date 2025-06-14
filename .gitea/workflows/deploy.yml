@@ -1,4 +1,4 @@
-name: Deploy Pi-hole Exporter
+name: Deploy pihole6_exporter
 
 on:
   push:
@@ -24,11 +24,11 @@ jobs:
       - name: Deploy to Raspberry Pi
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.RASPBERRY_PI_HOST }}
-          username: ${{ secrets.RASPBERRY_PI_USER }}
-          key: ${{ secrets.RASPBERRY_PI_SSH_KEY }}
+          host: ${{ secrets.PIHOLE_HOST }}
+          username: ${{ secrets.PIHOLE_USER }}
+          key: ${{ secrets.PIHOLE_SSH_KEY }}
           script: |
             cd /opt/pihole_exporter
             git pull
             pip install -r requirements.txt
-            sudo systemctl restart pihole_exporter 
+            sudo systemctl restart pihole6_exporter 
