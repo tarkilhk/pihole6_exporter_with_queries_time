@@ -28,7 +28,20 @@ jobs:
           username: ${{ secrets.PIHOLE_USER }}
           key: ${{ secrets.PIHOLE_SSH_KEY }}
           script: |
-            cd /opt/pihole_exporter
-            git pull
-            pip install -r requirements.txt
+            # Create directory if it doesn't exist
+            sudo mkdir -p /usr/local/bin
+            
+            # Copy the exporter script
+            sudo cp pihole6_exporter /usr/local/bin/
+            sudo chmod +x /usr/local/bin/pihole6_exporter
+            
+            # Set up the service
+            sudo cp pihole6_exporter.service /etc/systemd/system/
+            sudo systemctl daemon-reload
+            sudo systemctl enable pihole6_exporter
+            
+            # Install dependencies
+            sudo pip3 install -r requirements.txt
+            
+            # Restart the service
             sudo systemctl restart pihole6_exporter 
