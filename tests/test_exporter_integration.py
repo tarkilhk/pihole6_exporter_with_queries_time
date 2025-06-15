@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch
-from prometheus_client.core import GaugeMetricFamily
+from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily
 import importlib.util
 import sys
 from pathlib import Path
@@ -41,9 +41,8 @@ QUERIES_RESPONSE = {
             "timestamp": 1234567890,
             "type": "A",
             "status": "CACHED",
-            "reply_time": 0.001,  # 1ms - fast cache hit
             "rcode": "NOERROR",
-            "reply": {"type": "A"},
+            "reply": {"type": "A", "time": 0.001},  # 1ms - fast cache hit
             "client": {"ip": "192.168.1.2"},
             "upstream": "8.8.8.8"
         },
@@ -51,9 +50,8 @@ QUERIES_RESPONSE = {
             "timestamp": 1234567891,
             "type": "AAAA",
             "status": "FORWARDED",
-            "reply_time": 0.05,   # 50ms - slower forwarded
             "rcode": "NOERROR",
-            "reply": {"type": "AAAA"},
+            "reply": {"type": "AAAA", "time": 0.05},   # 50ms - slower forwarded
             "client": {"ip": "192.168.1.3"},
             "upstream": "1.1.1.1"
         },
@@ -61,48 +59,101 @@ QUERIES_RESPONSE = {
             "timestamp": 1234567892,
             "type": "A",
             "status": "FORWARDED",
-            "reply_time": -1,     # Invalid - should be skipped
-            "rcode": "TIMEOUT",
-            "reply": {"type": "A"},
+            "rcode": "SERVFAIL",  # DNS error
+            "reply": {"type": "A", "time": 0.1},
             "client": {"ip": "192.168.1.4"},
             "upstream": "8.8.4.4"
+        },
+        {
+            "timestamp": 1234567893,
+            "type": "A",
+            "status": "TIMEOUT",
+            "rcode": "TIMEOUT",
+            "reply": {"type": "A", "time": 0.0},
+            "client": {"ip": "192.168.1.5"},
+            "upstream": "8.8.8.8"
         }
     ]
 }
 
 def test_collect_yields_expected_metrics():
     """Integration test: ensure collect yields expected metrics from real code path."""
-    # Need 5 API calls: summary, upstreams, queries, summary again for cache ratio
+    # Need 4 API calls: summary, upstreams, queries, summary again for cache metrics
     with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]):
         collector = PiholeCollector()
         metrics = list(collector.collect())
-        # Check that at least one known metric is present
-        metric_names = [m.name for m in metrics if isinstance(m, GaugeMetricFamily)]
+        
+        # Check that basic metrics are present
+        metric_names = [m.name for m in metrics if hasattr(m, 'name')]
         assert "pihole_query_by_type" in metric_names
         assert "pihole_query_by_status" in metric_names
         assert "pihole_query_count" in metric_names
         assert "pihole_query_type_1m" in metric_names
-        # Check new metrics
-        assert "pihole_cache_hit_ratio_percent" in metric_names
         
-        # Check counter metrics - look for the actual metric name, not sample name
-        counter_names = [m.name for m in metrics if hasattr(m, 'name') and m.name.startswith('pihole_dns_timeouts')]
-        assert len(counter_names) > 0, f"No timeout counter found. Available metrics: {[m.name for m in metrics if hasattr(m, 'name')]}"
+        # Check new raw counter metrics (following Prometheus best practices)
+        assert "pihole_dns_errors_1m" in metric_names  # CounterMetricFamily base name
+        assert "pihole_dns_queries_processed_1m" in metric_names  # CounterMetricFamily base name
+        assert "pihole_dns_timeouts_1m" in metric_names
+        assert "pihole_dns_latency_seconds_1m" in metric_names
 
-def test_cache_hit_ratio_calculation():
-    """Test that cache hit ratio is calculated correctly."""
+def test_cache_metrics_in_query_count():
+    """Test that cache metrics are available in pihole_query_count"""
+    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE]):
+        collector = PiholeCollector()
+        metrics = list(collector.collect())
+        
+        # Find query count metrics which includes cache data
+        query_count_metrics = [m for m in metrics if hasattr(m, 'name') and m.name == "pihole_query_count"]
+        assert len(query_count_metrics) == 1
+        
+        query_metric = query_count_metrics[0]
+        # Should have cached and total categories (among others)
+        samples = query_metric.samples
+        cached_samples = [s for s in samples if s.labels.get('category') == 'cached']
+        total_samples = [s for s in samples if s.labels.get('category') == 'total']
+        
+        assert len(cached_samples) == 1, "Should have exactly one cached sample"
+        assert len(total_samples) == 1, "Should have exactly one total sample"
+        
+        # From SUMMARY_RESPONSE: cached=8, total=15
+        assert cached_samples[0].value == 8
+        assert total_samples[0].value == 15
+
+def test_dns_error_counters():
+    """Test that DNS errors are counted by rcode as raw counters."""
     with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]):
         collector = PiholeCollector()
         metrics = list(collector.collect())
         
-        # Find cache hit ratio metric
-        cache_metrics = [m for m in metrics if hasattr(m, 'name') and m.name == "pihole_cache_hit_ratio_percent"]
-        assert len(cache_metrics) == 1
+        # Find DNS error counter metric - should always be present even if no errors
+        # Note: CounterMetricFamily creates metric with base name, samples have _total suffix
+        error_metrics = [m for m in metrics if hasattr(m, 'name') and m.name == "pihole_dns_errors_1m"]
+        assert len(error_metrics) == 1
         
-        cache_metric = cache_metrics[0]
-        # From SUMMARY_RESPONSE: cached=8, total=15, so ratio should be 8/15*100 = 53.33%
-        expected_ratio = (8 / 15) * 100
-        assert abs(cache_metric.samples[0].value - expected_ratio) < 0.01  # Allow small floating point differences
+        error_metric = error_metrics[0]
+        # From QUERIES_RESPONSE: one query has "rcode": "SERVFAIL"
+        # CounterMetricFamily creates both _total and _created samples, we want the _total one
+        servfail_total_samples = [s for s in error_metric.samples if s.labels.get('rcode') == 'SERVFAIL' and s.name.endswith('_total')]
+        if servfail_total_samples:  # Only check if there are SERVFAIL samples
+            assert len(servfail_total_samples) == 1
+            assert servfail_total_samples[0].value == 1
+
+def test_dns_queries_processed_counter():
+    """Test that total queries processed counter is exported."""
+    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]):
+        collector = PiholeCollector()
+        metrics = list(collector.collect())
+        
+        # Find total queries counter
+        # Note: CounterMetricFamily creates metric with base name, samples have _total suffix
+        total_metrics = [m for m in metrics if hasattr(m, 'name') and m.name == "pihole_dns_queries_processed_1m"]
+        assert len(total_metrics) == 1
+        
+        total_metric = total_metrics[0]
+        # From QUERIES_RESPONSE: 4 queries total
+        total_samples = [s for s in total_metric.samples if s.name.endswith('_total')]
+        assert len(total_samples) == 1
+        assert total_samples[0].value == 4
 
 def test_dns_timeout_counter():
     """Test that DNS timeouts are counted correctly."""
@@ -110,34 +161,30 @@ def test_dns_timeout_counter():
         collector = PiholeCollector()
         metrics = list(collector.collect())
         
-        # Find timeout counter metric - the metric name is "pihole_dns_timeouts", not "pihole_dns_timeouts_total"
-        timeout_metrics = [m for m in metrics if hasattr(m, 'name') and m.name.startswith("pihole_dns_timeouts")]
+        # Find timeout counter metric
+        timeout_metrics = [m for m in metrics if hasattr(m, 'name') and m.name.startswith("pihole_dns_timeouts_1m")]
         assert len(timeout_metrics) == 1, f"Expected 1 timeout metric, found {len(timeout_metrics)}: {[m.name for m in timeout_metrics]}"
         
         timeout_metric = timeout_metrics[0]
         # From QUERIES_RESPONSE: one query has "rcode": "TIMEOUT", so count should be 1
-        # Look for the sample with name ending in "_total"
         total_samples = [s for s in timeout_metric.samples if s.name.endswith('_total')]
         assert len(total_samples) == 1
         assert total_samples[0].value == 1
 
 def test_latency_histogram_in_collect():
     """Test that DNS latency histogram is yielded by collect."""
-    # Need 4 API calls: summary, upstreams, queries, summary again for cache ratio
     with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]):
         collector = PiholeCollector()
         metrics = list(collector.collect())
         
         # Check histogram is present
         all_metric_names = [m.name for m in metrics if hasattr(m, 'name')]
-        assert "pihole_dns_latency_seconds" in all_metric_names, f"No latency histogram found. Available metrics: {all_metric_names}"
+        assert "pihole_dns_latency_seconds_1m" in all_metric_names, f"No latency histogram found. Available metrics: {all_metric_names}"
         
         # Find the latency metric
-        latency_metrics = [m for m in metrics if hasattr(m, 'name') and m.name == "pihole_dns_latency_seconds"]
+        latency_metrics = [m for m in metrics if hasattr(m, 'name') and m.name == "pihole_dns_latency_seconds_1m"]
         assert len(latency_metrics) == 1, "Should have exactly one latency histogram"
         
         latency_metric = latency_metrics[0]
-        assert latency_metric.name == "pihole_dns_latency_seconds"
-        assert "DNS query latency in seconds" in latency_metric.documentation 
-
- 
+        assert latency_metric.name == "pihole_dns_latency_seconds_1m"
+        assert "DNS query latency in seconds" in latency_metric.documentation

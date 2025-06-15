@@ -54,8 +54,8 @@ class PiholeCollector(Collector):
 
         # DNS latency histogram
         self.dns_latency = Histogram(
-            name='pihole_dns_latency_seconds',
-            documentation='DNS query latency in seconds',
+            name='pihole_dns_latency_seconds_1m',
+            documentation='DNS query latency in seconds (1m)',
             registry=None,  # Don't auto-register to avoid conflicts
             buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0],
             labelnames=['status']
@@ -370,24 +370,10 @@ class PiholeCollector(Collector):
 
             yield q_up
 
-            # Cache metrics - export raw counts, let Prometheus compute ratios
-            # Note: We need to get the summary data again since 'reply' now contains query data
-            summary_reply = self.get_api_call("stats/summary")
-            total_queries = summary_reply["queries"]["total"] if "queries" in summary_reply and "total" in summary_reply["queries"] else 0
-            cached_queries = summary_reply["queries"]["cached"] if "queries" in summary_reply and "cached" in summary_reply["queries"] else 0
-            
-            # Export raw cache hit counts - rates can be computed in Grafana/PromQL
-            cache_metrics = GaugeMetricFamily("pihole_cache_queries_total", 
-                                            "Cache query counts (24h)", 
-                                            labels=["cache_status"])
-            cache_metrics.add_metric(["hit"], cached_queries)
-            cache_metrics.add_metric(["total"], total_queries)
-            logging.info(f"Cache metrics: {cached_queries} hits out of {total_queries} total queries")
-            
-            yield cache_metrics
+
 
             # DNS timeouts counter (from last minute data)
-            dns_timeouts = CounterMetricFamily("pihole_dns_timeouts", 
+            dns_timeouts = CounterMetricFamily("pihole_dns_timeouts_1m", 
                                              "Total DNS timeout queries (last whole 1m)")
             dns_timeouts.add_metric([], self.timeout_cnt, last_min)
             logging.info(f"DNS timeouts in last minute: {self.timeout_cnt}")
@@ -395,17 +381,20 @@ class PiholeCollector(Collector):
             yield dns_timeouts
 
             # DNS error counters - export raw counts, let Prometheus compute rates
-            dns_error_counts = CounterMetricFamily("pihole_dns_errors_total", 
+            dns_error_counts = CounterMetricFamily("pihole_dns_errors_1m", 
                                                  "Total DNS errors by rcode (last whole 1m)", 
                                                  labels=["rcode"])
             
-            # Add error counts for each rcode
-            for rcode, count in self.error_cnt.items():
-                dns_error_counts.add_metric([rcode], count, last_min)
-                logging.info(f"DNS errors for {rcode}: {count} in last minute")
+            # Add error counts for each rcode (always yield metric even if no errors)
+            if self.error_cnt:
+                for rcode, count in self.error_cnt.items():
+                    dns_error_counts.add_metric([rcode], count, last_min)
+                    logging.info(f"DNS errors for {rcode}: {count} in last minute")
+            else:
+                logging.info("No DNS errors in last minute")
             
             # Also add total queries processed as a counter for rate calculations
-            total_queries_counter = CounterMetricFamily("pihole_dns_queries_processed_total",
+            total_queries_counter = CounterMetricFamily("pihole_dns_queries_processed_1m",
                                                       "Total DNS queries processed (last whole 1m)")
             total_queries_counter.add_metric([], self.total_queries_processed, last_min)
             logging.info(f"Total queries processed in last minute: {self.total_queries_processed}")
@@ -429,7 +418,7 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description="Prometheus exporter for Pi-hole version 6+")
 
-    parser.add_argument("-H", "--host", dest="host", type=str, required=False, help="hostname/ip of pihole instance (default localhost)", default="localhost")
+    parser.add_argument("-h", "--host", dest="host", type=str, required=False, help="hostname/ip of pihole instance (default localhost)", default="localhost")
     parser.add_argument("-p", "--port", dest="port", type=int, required=False, help="port to expose for scraping (default 9666)", default=9666)
     parser.add_argument("-k", "--key", dest="key", type=str, required=False, help="authentication token (if required)", default=None)
     parser.add_argument("-l", "--log-level", dest="log_level", type=str, required=False, help="logging level (DEBUG, INFO, WARNING, ERROR)", default="INFO")

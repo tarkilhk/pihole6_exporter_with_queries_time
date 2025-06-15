@@ -4,8 +4,10 @@ Description=Prometheus exporter for Pi-hole version 6+
 After=pihole-FTL.service
 
 [Service]
-EnvironmentFile=/etc/pihole6_exporter/pihole6_exporter.env
-ExecStart=/opt/pihole6_exporter/venv/bin/python /usr/local/bin/pihole6_exporter -H localhost -k ${PIHOLE_API_TOKEN} -l DEBUG
+# API token from environment file (if exists) or existing environment variable
+# File variables override existing environment variables if file exists
+EnvironmentFile=-/etc/pihole6_exporter/pihole6_exporter.env
+ExecStart=/opt/pihole6_exporter/venv/bin/python /usr/local/bin/pihole6_exporter -h localhost -k ${PIHOLE_API_TOKEN} -l INFO
 # Simple is the default type, but being explicit is good
 Type=simple
 Restart=always
