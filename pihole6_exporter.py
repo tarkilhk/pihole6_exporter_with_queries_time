@@ -420,12 +420,23 @@ class PiholeCollector(Collector):
                                                  "Total DNS errors by rcode (last whole 1m)", 
                                                  labels=["rcode"])
             
-            # Add error counts for each rcode (always yield metric even if no errors)
-            if self.error_cnt:
-                for rcode, count in self.error_cnt.items():
-                    dns_error_counts.add_metric([rcode], count, last_min)
+            # Define common DNS error codes to always export (even with zero values)
+            # Based on standard DNS response codes (rcode) that represent actual errors
+            common_error_codes = ["SERVFAIL", "NXDOMAIN", "REFUSED", "FORMERR", "NOTIMP"]
+            
+            # Create a complete error count dict with all common codes initialized to 0
+            complete_error_counts = {rcode: 0 for rcode in common_error_codes}
+            # Update with actual error counts
+            complete_error_counts.update(self.error_cnt)
+            
+            # Always export all error codes (including zeros)
+            for rcode, count in complete_error_counts.items():
+                dns_error_counts.add_metric([rcode], count, last_min)
+                if count > 0:
                     logging.info(f"DNS errors for {rcode}: {count} in last minute")
-            else:
+            
+            # Log if no errors occurred
+            if sum(complete_error_counts.values()) == 0:
                 logging.info("No DNS errors in last minute")
             
             # Also add total queries processed as a counter for rate calculations
