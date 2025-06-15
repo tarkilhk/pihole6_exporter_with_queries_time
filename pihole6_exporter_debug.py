@@ -13,13 +13,9 @@ from prometheus_client import start_http_server
 
 class PiholeCollector(Collector):
 
-
     def __init__(self, host="localhost", key=None):
-
         self.using_auth = False
-        # Disable if you've actually got a good cert set up.
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
         self.host = host
 
         # Try to get API key from environment variable if not provided
@@ -45,19 +41,17 @@ class PiholeCollector(Collector):
         self.reply_cnt = {}
         self.client_cnt = {}
         self.upstream_cnt = {}
-        self.timeout_cnt = 0  # Track DNS timeouts
-        self.debug_logged = False  # Only log query structure once per run
+        self.timeout_cnt = 0
+        self.debug_logged = False  # Only log once per run
 
         # DNS latency histogram
         self.dns_latency = Histogram(
             name='pihole_dns_latency_seconds',
             documentation='DNS query latency in seconds',
-            registry=None,  # Don't auto-register to avoid conflicts
+            registry=None,
             buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0],
             labelnames=['status']
         )
-        logging.info("DNS latency histogram initialized")
-
 
     def get_sid(self, key):
         auth_url = "https://" + self.host + ":443/api/auth"
@@ -67,7 +61,6 @@ class PiholeCollector(Collector):
         
         reply = req.json()
         return reply['session']['sid']
-
 
     def get_api_call(self, api_path):
         url = "https://" + self.host + ":443/api/" + api_path
@@ -89,7 +82,6 @@ class PiholeCollector(Collector):
             logging.error(f"Failed to parse JSON response: {e}")
             logging.error(f"Raw response: {req.text}")
             raise
-
 
     def clear_cnts(self):
         keys = self.type_cnt.keys()
@@ -127,17 +119,9 @@ class PiholeCollector(Collector):
             else:
                 del self.upstream_cnt[k]
 
-        # Reset timeout counter
         self.timeout_cnt = 0
 
-
     def _process_query(self, q):
-        query_type = q["type"]
-        status = q["status"]
-        replytype = q["reply"]["type"]
-        client = q["client"]["ip"]
-        upstream = q["upstream"]
-        
         # DEBUG: Log the structure of the first query to understand available fields
         if not self.debug_logged:
             logging.info("=== DEBUG: First query structure ===")
@@ -158,16 +142,22 @@ class PiholeCollector(Collector):
                 logging.info("=== No obvious latency fields found ===")
             
             self.debug_logged = True
+
+        type = q["type"]
+        status = q["status"]
+        replytype = q["reply"]["type"]
+        client = q["client"]["ip"]
+        upstream = q["upstream"]
         if upstream is None:
             if status in ("GRAVITY", "CACHE", "SPECIAL_DOMAIN"):
                 upstream = f"None-{status}"
             else:
                 upstream = "None-OTHER"
 
-        if query_type in self.type_cnt:
-            self.type_cnt[query_type] += 1
+        if type in self.type_cnt:
+            self.type_cnt[type] += 1
         else:
-            self.type_cnt[query_type] = 1
+            self.type_cnt[type] = 1
 
         if status in self.status_cnt:
             self.status_cnt[status] += 1
@@ -191,30 +181,24 @@ class PiholeCollector(Collector):
 
         # Track DNS latency - try multiple possible field names
         reply_time = None
-        latency_field_found = None
-        
-        for field_name in ['reply_time', 'response_time', 'duration', 'latency', 'time_taken', 'time']:
+        for field_name in ['reply_time', 'response_time', 'duration', 'latency', 'time_taken']:
             if field_name in q:
                 reply_time = q[field_name]
-                latency_field_found = field_name
+                logging.info(f"Found latency field '{field_name}': {reply_time}")
                 break
-        
-        if latency_field_found:
-            logging.debug(f"Found latency field '{latency_field_found}': {reply_time}")
         
         if reply_time is not None and isinstance(reply_time, (int, float)) and reply_time >= 0:
             status_label = "cache" if status == "CACHED" else "forwarded"
             self.dns_latency.labels(status=status_label).observe(reply_time)
-            logging.debug(f"Observed latency: {reply_time}s for {status_label}")
+            logging.info(f"Observed latency: {reply_time}s for {status_label}")
         else:
-            logging.debug(f"No valid latency data: field={latency_field_found}, value={reply_time}, type={type(reply_time) if reply_time is not None else 'None'}")
+            logging.debug(f"No valid latency data found in query: reply_time={reply_time}")
 
         # Track DNS timeouts
         rcode = q.get("rcode", "")
         if rcode == "TIMEOUT" or status == "TIMEOUT":
             self.timeout_cnt += 1
             logging.info(f"Timeout detected: rcode={rcode}, status={status}")
-
 
     def collect(self):
         logging.info("beginning scrape...")
@@ -274,9 +258,6 @@ class PiholeCollector(Collector):
             total_counts.add_metric(["cached"], reply["queries"]["cached"])
 
             yield total_counts
-
-            # Yes, I skipped percent_blocked.  We can calculate that in Grafana.
-            # Better to not provide data that can be derived from other data.
 
             clients = GaugeMetricFamily("pihole_client_count",
                     "Total/active client counts", labels=["category"])
@@ -355,7 +336,6 @@ class PiholeCollector(Collector):
             yield q_up
 
             # Cache hit ratio gauge (from 24h summary data)
-            # Note: We need to get the summary data again since 'reply' now contains query data
             summary_reply = self.get_api_call("stats/summary")
             total_queries = summary_reply["queries"]["total"] if "queries" in summary_reply and "total" in summary_reply["queries"] else 0
             cached_queries = summary_reply["queries"]["cached"] if "queries" in summary_reply and "cached" in summary_reply["queries"] else 0
@@ -368,7 +348,6 @@ class PiholeCollector(Collector):
                 logging.info(f"Cache hit ratio: {ratio:.2f}% ({cached_queries}/{total_queries})")
             else:
                 cache_hit_ratio.add_metric([], 0)
-                logging.info("Cache hit ratio: 0% (no queries)")
             
             yield cache_hit_ratio
 
@@ -396,19 +375,18 @@ if __name__ == '__main__':
     
     logging.basicConfig(format='level="%(levelname)s" message="%(message)s"', level=logging.INFO)
 
-    parser = argparse.ArgumentParser(description="Prometheus exporter for Pi-hole version 6+")
+    parser = argparse.ArgumentParser(description="DEBUG version of Prometheus exporter for Pi-hole version 6+")
 
     parser.add_argument("-H", "--host", dest="host", type=str, required=False, help="hostname/ip of pihole instance (default localhost)", default="localhost")
-    parser.add_argument("-p", "--port", dest="port", type=int, required=False, help="port to expose for scraping (default 9666)", default=9666)
+    parser.add_argument("-p", "--port", dest="port", type=int, required=False, help="port to expose for scraping (default 9667)", default=9667)
     parser.add_argument("-k", "--key", dest="key", type=str, required=False, help="authentication token (if required)", default=None)
 
     args = parser.parse_args()
 
     start_http_server(args.port)
-    logging.info("Exporter HTTP endpoint started")
+    logging.info(f"DEBUG Exporter HTTP endpoint started on port {args.port}")
 
     REGISTRY.register(PiholeCollector(args.host, args.key))
-    logging.info("Ready to collect data")
+    logging.info("Ready to collect data with DEBUG logging")
     while True:
-        time.sleep(1)
-
+        time.sleep(1) 
