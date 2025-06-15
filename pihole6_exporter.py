@@ -53,7 +53,7 @@ class PiholeCollector(Collector):
         self.total_queries_processed = 0  # Track total queries for rate calculation
 
         # DNS latency tracking - manually track histogram data
-        self.latency_buckets = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0]
+        self.latency_buckets = [0.0001, 0.0005, 0.001, 0.01, 0.1, 0.5, 1.0, 2.5]
         self.latency_counts = {}  # {status: {bucket: count}}
         self.latency_sums = {}    # {status: total_sum}
         self.latency_total_counts = {}  # {status: total_count}
