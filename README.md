@@ -47,10 +47,10 @@ The session ID should stay active as long as it is used at least every 5 minutes
 
 * Python 3.7+
 * Dependencies listed in `requirements.txt`:
-  * `prometheus-client>=0.22.1` - Prometheus metrics library
-  * `requests>=2.31.0` - HTTP library for Pi-hole API calls
-  * `urllib3>=2.0.7` - HTTP client library
-  * `pytest>=7.4.0` - Testing framework (for development)
+  * `prometheus-client` - Prometheus metrics library
+  * `requests` - HTTP library for Pi-hole API calls
+  * `urllib3` - HTTP client library
+  * `pytest` - Testing framework (for development)
 
 ### Installation
 
