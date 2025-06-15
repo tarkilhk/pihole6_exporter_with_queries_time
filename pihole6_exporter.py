@@ -394,15 +394,18 @@ class PiholeCollector(Collector):
 
 if __name__ == '__main__':
     
-    logging.basicConfig(format='level="%(levelname)s" message="%(message)s"', level=logging.INFO)
-
     parser = argparse.ArgumentParser(description="Prometheus exporter for Pi-hole version 6+")
 
     parser.add_argument("-H", "--host", dest="host", type=str, required=False, help="hostname/ip of pihole instance (default localhost)", default="localhost")
     parser.add_argument("-p", "--port", dest="port", type=int, required=False, help="port to expose for scraping (default 9666)", default=9666)
     parser.add_argument("-k", "--key", dest="key", type=str, required=False, help="authentication token (if required)", default=None)
+    parser.add_argument("-l", "--log-level", dest="log_level", type=str, required=False, help="logging level (DEBUG, INFO, WARNING, ERROR)", default="INFO")
 
     args = parser.parse_args()
+
+    # Set logging level based on argument
+    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
+    logging.basicConfig(format='level="%(levelname)s" message="%(message)s"', level=log_level)
 
     start_http_server(args.port)
     logging.info("Exporter HTTP endpoint started")
