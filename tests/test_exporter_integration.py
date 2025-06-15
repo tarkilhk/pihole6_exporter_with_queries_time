@@ -188,3 +188,24 @@ def test_latency_histogram_in_collect():
         latency_metric = latency_metrics[0]
         assert latency_metric.name == "pihole_dns_latency_seconds_1m"
         assert "DNS query latency in seconds" in latency_metric.documentation
+
+
+def test_system_metrics_present():
+    """Ensure system metrics are exported."""
+    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]):
+        collector = PiholeCollector()
+        metrics = list(collector.collect())
+
+        metric_names = [m.name for m in metrics if hasattr(m, 'name')]
+
+        expected = [
+            'system_cpu_usage_percent',
+            'system_load1',
+            'system_memory_usage_bytes',
+            'system_disk_usage_bytes',
+            'system_network_receive_bytes',
+            'system_sdcard_wear_percent',
+        ]
+
+        for name in expected:
+            assert name in metric_names
