@@ -193,12 +193,9 @@ class PiholeCollector(Collector):
         reply_time = None
         latency_field_found = None
         
-        for field_name in ['reply_time', 'response_time', 'duration', 'latency', 'time_taken', 'time']:
-            if field_name in q:
-                reply_time = q[field_name]
-                latency_field_found = field_name
-                break
-        
+        reply_time = q['reply']['time']
+        latency_field_found = 'reply.time'
+
         if latency_field_found:
             logging.debug(f"Found latency field '{latency_field_found}': {reply_time}")
         
