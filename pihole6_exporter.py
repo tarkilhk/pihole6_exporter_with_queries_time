@@ -57,7 +57,7 @@ class PiholeCollector(Collector):
             name='pihole_dns_latency_seconds_1m',
             documentation='DNS query latency in seconds (1m)',
             registry=None,  # Don't auto-register to avoid conflicts
-            buckets=[0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0],
+            buckets=[0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0],
             labelnames=['status']
         )
         logging.info("DNS latency histogram initialized")
