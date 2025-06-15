@@ -52,12 +52,12 @@ class PiholeCollector(Collector):
         self.error_cnt = {}  # Track DNS errors by rcode
         self.total_queries_processed = 0  # Track total queries for rate calculation
 
-        # DNS latency histogram
+        # DNS latency histogram with improved buckets for typical DNS response times
         self.dns_latency = Histogram(
             name='pihole_dns_latency_seconds_1m',
             documentation='DNS query latency in seconds (1m)',
             registry=None,  # Don't auto-register to avoid conflicts
-            buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0],
+            buckets=[0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0],
             labelnames=['status']
         )
         logging.info("DNS latency histogram initialized")
@@ -208,9 +208,28 @@ class PiholeCollector(Collector):
             logging.debug(f"Found latency field '{latency_field_found}': {reply_time}")
         
         if reply_time is not None and isinstance(reply_time, (int, float)) and reply_time >= 0:
-            status_label = "cache" if status == "CACHED" else "forwarded"
+            # Categorize Pi-hole status into meaningful groups for latency tracking
+            if status in ("CACHE", "CACHE_STALE"):
+                status_label = "cache"
+            elif status == "FORWARDED":
+                status_label = "forwarded"
+            elif status in ("GRAVITY", "REGEX", "DENYLIST", "GRAVITY_CNAME", "REGEX_CNAME", "DENYLIST_CNAME",
+                          "EXTERNAL_BLOCKED_IP", "EXTERNAL_BLOCKED_NULL", "EXTERNAL_BLOCKED_NXRA", 
+                          "EXTERNAL_BLOCKED_EDE15", "SPECIAL_DOMAIN"):
+                status_label = "blocked"
+            elif status in ("RETRIED", "RETRIED_DNSSEC"):
+                status_label = "retried"
+            elif status == "IN_PROGRESS":
+                status_label = "in_progress"
+            elif status in ("DBBUSY", "UNKNOWN"):
+                status_label = "other"
+            else:
+                # Fallback for unknown statuses - log them for debugging
+                status_label = "unknown"
+                logging.warning(f"Unknown Pi-hole status '{status}' encountered, categorizing as 'unknown'")
+            
             self.dns_latency.labels(status=status_label).observe(reply_time)
-            logging.debug(f"Observed latency: {reply_time}s for {status_label}")
+            logging.debug(f"Observed latency: {reply_time}s for status '{status}' (labeled as '{status_label}')")
         else:
             logging.debug(f"No valid latency data: field={latency_field_found}, value={reply_time}, type={type(reply_time) if reply_time is not None else 'None'}")
 
