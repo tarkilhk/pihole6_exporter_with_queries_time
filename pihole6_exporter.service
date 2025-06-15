@@ -1,14 +1,16 @@
 [Unit]
-Description=Pihole v6 Prometheus Exporter
+Description=Prometheus exporter for Pi-hole version 6+
+# Optional but tightens coupling
 After=pihole-FTL.service
-Requires=pihole-FTL.service   # optional but tightens coupling
 
 [Service]
 EnvironmentFile=/etc/pihole6_exporter/pihole6_exporter.env
 ExecStart=/opt/pihole6_exporter/venv/bin/python /usr/local/bin/pihole6_exporter -H localhost -k ${PIHOLE_API_TOKEN}
-Type=simple                   # or just delete this line (simple is default)
+# Simple is the default type, but being explicit is good
+Type=simple
 Restart=always
-RestartSec=5s                 # small back-off between restarts
+# Small back-off between restarts
+RestartSec=5s
 
 [Install]
 WantedBy=multi-user.target
