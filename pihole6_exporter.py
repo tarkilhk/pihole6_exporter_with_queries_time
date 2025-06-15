@@ -5,8 +5,9 @@ import time
 import requests
 import urllib3
 import logging
-from prometheus_client import Histogram
-from prometheus_client.core import GaugeMetricFamily
+import argparse
+from prometheus_client import Histogram, Counter
+from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, REGISTRY
 from prometheus_client.registry import Collector
 from prometheus_client import start_http_server
 
@@ -44,6 +45,7 @@ class PiholeCollector(Collector):
         self.reply_cnt = {}
         self.client_cnt = {}
         self.upstream_cnt = {}
+        self.timeout_cnt = 0  # Track DNS timeouts
 
         # DNS latency histogram
         self.dns_latency = Histogram(
@@ -123,6 +125,9 @@ class PiholeCollector(Collector):
             else:
                 del self.upstream_cnt[k]
 
+        # Reset timeout counter
+        self.timeout_cnt = 0
+
 
     def _process_query(self, q):
         type = q["type"]
@@ -166,6 +171,11 @@ class PiholeCollector(Collector):
         if reply_time is not None and isinstance(reply_time, (int, float)) and reply_time >= 0:
             status_label = "cache" if status == "CACHED" else "forwarded"
             self.dns_latency.labels(status=status_label).observe(reply_time)
+
+        # Track DNS timeouts
+        rcode = q.get("rcode", "")
+        if rcode == "TIMEOUT" or status == "TIMEOUT":
+            self.timeout_cnt += 1
 
 
     def collect(self):
@@ -302,6 +312,29 @@ class PiholeCollector(Collector):
                 q_up.add_metric([str(u[0])], u[1], last_min)
 
             yield q_up
+
+            # Cache hit ratio gauge (from 24h summary data)
+            # Note: We need to get the summary data again since 'reply' now contains query data
+            summary_reply = self.get_api_call("stats/summary")
+            total_queries = summary_reply["queries"]["total"] if "queries" in summary_reply and "total" in summary_reply["queries"] else 0
+            cached_queries = summary_reply["queries"]["cached"] if "queries" in summary_reply and "cached" in summary_reply["queries"] else 0
+            
+            cache_hit_ratio = GaugeMetricFamily("pihole_cache_hit_ratio_percent", 
+                                              "Cache hit ratio as percentage (24h)")
+            if total_queries > 0:
+                ratio = (cached_queries / total_queries) * 100
+                cache_hit_ratio.add_metric([], ratio)
+            else:
+                cache_hit_ratio.add_metric([], 0)
+            
+            yield cache_hit_ratio
+
+            # DNS timeouts counter (from last minute data)
+            dns_timeouts = CounterMetricFamily("pihole_dns_timeouts", 
+                                             "Total DNS timeout queries (last whole 1m)")
+            dns_timeouts.add_metric([], self.timeout_cnt, last_min)
+            
+            yield dns_timeouts
 
             # Add latency histogram metrics
             for metric in self.dns_latency.collect():

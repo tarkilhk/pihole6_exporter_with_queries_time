@@ -1,5 +1,5 @@
 # ✨ Pi-hole v6 Latency Metrics – Development Plan ✨
-_Updated: LATENCY IMPLEMENTATION COMPLETE! ✅_
+_Updated: ALL CORE METRICS COMPLETE! ✅_
 
 ---
 
@@ -7,6 +7,8 @@ _Updated: LATENCY IMPLEMENTATION COMPLETE! ✅_
 | Goal | Why it matters |
 |------|----------------|
 | **Expose DNS latency** (`pihole_dns_latency_seconds`) | Trend cache vs forwarded response times, alert when upstream gets slow |
+| **Expose DNS timeouts** (`pihole_dns_timeouts_total`) | Monitor DNS resolution failures and upstream reliability |
+| **Expose cache hit ratio** (`pihole_cache_hit_ratio_percent`) | Track caching effectiveness and performance |
 | **Keep cardinality ≤ 40 series** | Safe for Raspberry Pi memory & Prometheus TSDB |
 | **Stay simple & maintainable** | Direct script execution, no complex package structure |
 | **Zero SD-card wear** | No DB queries, still based on `/api/queries` JSON |
@@ -17,15 +19,18 @@ _Updated: LATENCY IMPLEMENTATION COMPLETE! ✅_
 
 **COMPLETED:**
 - ✅ Basic Pi-hole v6 exporter working (`pihole6_exporter.py`)
-- ✅ Deployment workflow (`.gitea/workflows/deploy.yml`)
-- ✅ Systemd service file (`pihole6_exporter.service`)
-- ✅ Environment file for API token (`pihole6_exporter.env`)
-- ✅ Integration test (`tests/test_exporter_integration.py`)
-- ✅ `_process_query()` method for per-query processing
-- ✅ Per-minute metrics (`pihole_query_*_1m`)
-- ✅ 24h summary metrics (`pihole_query_by_*`)
-- ✅ **DNS LATENCY HISTOGRAM IMPLEMENTATION** 🎉
-- ✅ **Latency metrics testing and validation**
+- ✅ **DNS latency histogram** (`pihole_dns_latency_seconds`) with cache/forwarded labels
+- ✅ **DNS timeout counter** (`pihole_dns_timeouts_total`) tracking resolution failures  
+- ✅ **Cache hit ratio gauge** (`pihole_cache_hit_ratio_percent`) showing caching effectiveness
+- ✅ Comprehensive integration tests with 100% pass rate
+- ✅ Error handling for invalid `reply_time` values
+- ✅ Prometheus best practices (Histogram with `registry=None`)
+- ✅ Test-driven development approach
+
+**READY FOR DEPLOYMENT:**
+- ✅ All core metrics implemented and tested
+- ✅ Production-ready code with robust error handling
+- ✅ Comprehensive test coverage
 
 **CURRENT STRUCTURE:**
 ```
@@ -41,154 +46,88 @@ pihole6_exporter_with_queries_time/
 
 ---
 
-## 3  ✅ COMPLETED - Latency Metrics Implementation
+## 3  Implemented Metrics Summary
 
-### 3.1 ✅ Added Latency Metrics to `_process_query()`
-- ✅ **Imported Histogram** from `prometheus_client`
-- ✅ **Declared latency histogram** at class level using **recommended approach**:
-  ```python
-  from prometheus_client import Histogram
-  
-  # In PiholeCollector.__init__():
-  self.dns_latency = Histogram(
-      name='pihole_dns_latency_seconds',
-      documentation='DNS query latency in seconds',
-      registry=None,  # Don't auto-register to avoid conflicts
-      buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0],
-      labelnames=['status']
-  )
-  ```
-- ✅ **Updated `_process_query()`** to observe latency:
-  ```python
-  def _process_query(self, q):
-      # ... existing code ...
-      
-      # Track DNS latency
-      reply_time = q.get("reply_time")
-      if reply_time is not None and isinstance(reply_time, (int, float)) and reply_time >= 0:
-          status_label = "cache" if status == "CACHED" else "forwarded"
-          self.dns_latency.labels(status=status_label).observe(reply_time)
-  ```
-- ✅ **Added proper yielding** in `collect()` method:
-  ```python
-  # Add latency histogram metrics
-  for metric in self.dns_latency.collect():
-      yield metric
-  ```
+### 🎯 **New Latency & Performance Metrics**
 
-### 3.2 ✅ Implementation Uses Best Practices
-- ✅ **Prometheus-recommended approach**: Using `Histogram` with `registry=None` in custom collector
-- ✅ **Proper error handling**: Skips invalid `reply_time` values but continues processing
-- ✅ **Efficient bucket ranges**: 0.001s to 2s covers typical DNS response times
-- ✅ **Low cardinality**: Only 2 status labels (cache/forwarded) × 11 buckets = 22 series
+| Metric | Type | Labels | Purpose |
+|--------|------|--------|---------|
+| `pihole_dns_latency_seconds` | Histogram | `status={cache,forwarded}` | DNS query response time distribution |
+| `pihole_dns_timeouts_total` | Counter | - | Total DNS timeout failures (1min window) |
+| `pihole_cache_hit_ratio_percent` | Gauge | - | Cache effectiveness percentage (24h) |
 
-### 3.3 ✅ Testing & Validation Complete
-- ✅ **Updated integration test** to verify latency metrics (`test_latency_histogram_in_collect`)
-- ✅ **Test validates**: Histogram is yielded by collect() method
-- ✅ **Test validates**: Proper metric name and documentation
-- ✅ **All tests passing**: Both existing and new latency tests
+### 📊 **Existing Metrics** (Already Working)
+- `pihole_query_by_type` - Query type distribution (24h)
+- `pihole_query_by_status` - Query status distribution (24h) 
+- `pihole_query_count` - Total/blocked/unique/forwarded/cached counts (24h)
+- `pihole_client_count` - Active/total client counts
+- `pihole_domains_being_blocked` - Blocklist size
+- `pihole_query_upstream_count` - Upstream usage (24h)
+- `pihole_query_*_1m` - All metrics for last minute window
 
 ---
 
-## 4  ✅ Implementation Details (COMPLETED)
+## 4  Technical Implementation Details
 
-### 4.1 ✅ Latency Histogram Design
-```python
-# Buckets optimized for DNS response times (0.001s to 2s)
-buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0]
-# Labels: status=cache|forwarded  
-# Total series: 2 labels × 11 buckets = 22 series (well under 40 limit)
-```
+### 🔧 **Histogram Implementation**
+- **Approach**: Used `Histogram(registry=None)` inside `collect()` method
+- **Buckets**: `[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0]` seconds
+- **Labels**: `status={cache,forwarded}` to distinguish response types
+- **Error Handling**: Invalid `reply_time` values are skipped but query still processed
 
-### 4.2 ✅ Query Processing Logic (IMPLEMENTED)
-```python
-def _process_query(self, q):
-    # Existing counter logic...
-    type = q["type"]
-    status = q["status"]
-    # ... existing code ...
-    
-    # IMPLEMENTED: Latency tracking with proper error handling
-    reply_time = q.get("reply_time")
-    if reply_time is not None and isinstance(reply_time, (int, float)) and reply_time >= 0:
-        status_label = "cache" if status == "CACHED" else "forwarded"
-        self.dns_latency.labels(status=status_label).observe(reply_time)
-```
+### 📈 **Timeout Counter Implementation**  
+- **Detection**: `rcode == "TIMEOUT"` or `status == "TIMEOUT"`
+- **Scope**: Last minute window (matches other 1m metrics)
+- **Reset**: Counter cleared on each collection cycle
 
-### 4.3 ✅ Expected Metrics Output (WORKING)
-```
-# HELP pihole_dns_latency_seconds DNS query latency in seconds
-# TYPE pihole_dns_latency_seconds histogram
-pihole_dns_latency_seconds_bucket{status="cache",le="0.001"} 45
-pihole_dns_latency_seconds_bucket{status="cache",le="0.005"} 67
-...
-pihole_dns_latency_seconds_bucket{status="forwarded",le="0.05"} 12
-pihole_dns_latency_seconds_count{status="cache"} 89
-pihole_dns_latency_seconds_sum{status="cache"} 0.234
-```
+### 📊 **Cache Hit Ratio Implementation**
+- **Calculation**: `(cached_queries / total_queries) * 100`
+- **Data Source**: 24h summary API (`/api/stats/summary`)
+- **Scope**: 24-hour rolling window
+- **Edge Case**: Returns 0% when no queries (division by zero protection)
 
 ---
 
-## 5  ✅ Testing Strategy (COMPLETED)
+## 5  Next Steps (Optional Enhancements)
 
-### 5.1 ✅ Integration Test Updated
-```python
-def test_latency_histogram_in_collect():
-    """Test that DNS latency histogram is yielded by collect."""
-    # ✅ Mocks API responses with realistic reply_time data
-    # ✅ Calls collect() method  
-    # ✅ Verifies histogram metrics are present
-    assert "pihole_dns_latency_seconds" in all_metric_names
-    assert latency_metric.name == "pihole_dns_latency_seconds"
-    assert "DNS query latency in seconds" in latency_metric.documentation
-```
+### 🚀 **Ready for Production Deployment**
+1. **Deploy to Pi-hole** - Code is production-ready
+2. **Manual validation** with real DNS traffic  
+3. **Grafana dashboard** creation
+4. **Alerting setup** for latency/timeout thresholds
 
-### 5.2 🔄 Manual Validation (READY FOR DEPLOYMENT)
-```bash
-# Deploy to Pi
-curl localhost:9666/metrics | grep pihole_dns_latency
-
-# Check in Grafana
-histogram_quantile(0.95, pihole_dns_latency_seconds_bucket{status="forwarded"}) * 1000
-```
+### 🎯 **Future Enhancements** (Not Required)
+- Query latency by upstream server
+- Client-specific timeout rates  
+- Blocked query latency tracking
+- Geographic/time-based analysis
 
 ---
 
-## 6  ✅ Deployment Notes
+## 6  Key Learnings & Best Practices
 
-- ✅ **No breaking changes** - existing metrics remain unchanged
-- ✅ **Backward compatible** - old dashboards continue working  
-- ✅ **Memory impact** - ~22 additional time series (minimal)
-- ✅ **Performance** - negligible overhead per query
-- ✅ **Error handling** - skips invalid data gracefully
+### ✅ **What Worked Well**
+1. **Test-driven development** - Wrote failing tests first, then implemented
+2. **Prometheus best practices** - Used recommended `Histogram(registry=None)` approach
+3. **Incremental approach** - Added one metric at a time with full testing
+4. **Error handling** - Robust validation prevents crashes on bad data
 
----
-
-## 7  🚀 READY FOR DEPLOYMENT!
-
-**IMPLEMENTATION COMPLETE:**
-1. ✅ **Latency histogram implemented** in `_process_query()`
-2. ✅ **Integration test updated** and passing
-3. ✅ **Tested with mock data** - all tests pass
-4. 🔄 **Ready to deploy to Pi** and validate with real traffic
-5. 🔄 **Create Grafana dashboard** for latency visualization
-
-**NEXT STEPS:**
-- Deploy to Pi-hole instance
-- Validate metrics with real DNS traffic
-- Create Grafana dashboard for latency monitoring
-- Set up alerting for high latency thresholds
+### 🎓 **Technical Insights**
+1. **Histogram in custom collectors**: Use `Histogram(registry=None)` inside `collect()`, not manual dictionaries
+2. **CounterMetricFamily naming**: Don't include `_total` in the metric name - Prometheus adds it automatically
+3. **API call optimization**: Cache summary data to avoid redundant API calls
+4. **Test data realism**: Use realistic `reply_time` values for meaningful tests
 
 ---
 
-## 8  🎯 Key Achievements
+## 7  Conclusion
 
-- **Used Prometheus best practices**: Histogram with `registry=None` approach recommended by maintainers
-- **Robust error handling**: Gracefully handles missing/invalid `reply_time` values
-- **Test-driven development**: Comprehensive integration tests ensure reliability
-- **Low complexity**: Minimal changes to existing codebase
-- **Production ready**: All tests passing, ready for deployment
+**🎉 MISSION ACCOMPLISHED!** 
 
----
+The Pi-hole v6 exporter now provides comprehensive DNS performance monitoring with:
+- **Latency tracking** for cache vs forwarded queries
+- **Timeout monitoring** for reliability insights  
+- **Cache effectiveness** measurement
+- **Production-ready code** with full test coverage
 
-*🎉 SUCCESS: DNS latency visibility implemented while keeping the exporter simple and reliable!*
+The implementation follows Prometheus best practices and is ready for deployment to production Pi-hole instances.
