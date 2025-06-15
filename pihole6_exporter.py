@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 
+import os
 import time
 import requests
 import urllib3
-import argparse
 import logging
-from datetime import datetime
-from prometheus_client.core import GaugeMetricFamily, REGISTRY
+from prometheus_client import CollectorRegistry, Histogram
+from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily
+from prometheus_client.registry import Collector
 from prometheus_client import start_http_server
-import os
 
-
-class PiholeCollector(object):
+class PiholeCollector(Collector):
 
 
     def __init__(self, host="localhost", key=None):
@@ -45,6 +44,15 @@ class PiholeCollector(object):
         self.reply_cnt = {}
         self.client_cnt = {}
         self.upstream_cnt = {}
+
+        # DNS latency histogram
+        self.dns_latency = Histogram(
+            name='pihole_dns_latency_seconds',
+            documentation='DNS query latency in seconds',
+            registry=None,  # Don't auto-register to avoid conflicts
+            buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0],
+            labelnames=['status']
+        )
 
 
     def get_sid(self, key):
@@ -152,6 +160,12 @@ class PiholeCollector(object):
             self.upstream_cnt[upstream] += 1
         else:
             self.upstream_cnt[upstream] = 1
+
+        # Track DNS latency
+        reply_time = q.get("reply_time")
+        if reply_time is not None and isinstance(reply_time, (int, float)) and reply_time >= 0:
+            status_label = "cache" if status == "CACHED" else "forwarded"
+            self.dns_latency.labels(status=status_label).observe(reply_time)
 
 
     def collect(self):
@@ -288,6 +302,10 @@ class PiholeCollector(object):
                 q_up.add_metric([str(u[0])], u[1], last_min)
 
             yield q_up
+
+            # Add latency histogram metrics
+            for metric in self.dns_latency.collect():
+                yield metric
 
             logging.info("scrape completed")
         except Exception as e:

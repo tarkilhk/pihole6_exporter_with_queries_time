@@ -41,7 +41,7 @@ QUERIES_RESPONSE = {
             "timestamp": 1234567890,
             "type": "A",
             "status": "CACHED",
-            "reply_time": 0.001,
+            "reply_time": 0.001,  # 1ms - fast cache hit
             "rcode": "NOERROR",
             "reply": {"type": "A"},
             "client": {"ip": "192.168.1.2"},
@@ -51,11 +51,21 @@ QUERIES_RESPONSE = {
             "timestamp": 1234567891,
             "type": "AAAA",
             "status": "FORWARDED",
-            "reply_time": 0.05,
+            "reply_time": 0.05,   # 50ms - slower forwarded
             "rcode": "NOERROR",
             "reply": {"type": "AAAA"},
             "client": {"ip": "192.168.1.3"},
             "upstream": "1.1.1.1"
+        },
+        {
+            "timestamp": 1234567892,
+            "type": "A",
+            "status": "FORWARDED",
+            "reply_time": -1,     # Invalid - should be skipped
+            "rcode": "TIMEOUT",
+            "reply": {"type": "A"},
+            "client": {"ip": "192.168.1.4"},
+            "upstream": "8.8.4.4"
         }
     ]
 }
@@ -71,4 +81,22 @@ def test_collect_yields_expected_metrics():
         assert "pihole_query_by_status" in metric_names
         assert "pihole_query_count" in metric_names
         assert "pihole_query_type_1m" in metric_names
-        # Optionally, check values/labels for more detail 
+        # Optionally, check values/labels for more detail
+
+def test_latency_histogram_in_collect():
+    """Test that DNS latency histogram is yielded by collect."""
+    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE]):
+        collector = PiholeCollector()
+        metrics = list(collector.collect())
+        
+        # Check histogram is present
+        all_metric_names = [m.name for m in metrics if hasattr(m, 'name')]
+        assert "pihole_dns_latency_seconds" in all_metric_names, f"No latency histogram found. Available metrics: {all_metric_names}"
+        
+        # Find the latency metric
+        latency_metrics = [m for m in metrics if hasattr(m, 'name') and m.name == "pihole_dns_latency_seconds"]
+        assert len(latency_metrics) == 1, "Should have exactly one latency histogram"
+        
+        latency_metric = latency_metrics[0]
+        assert latency_metric.name == "pihole_dns_latency_seconds"
+        assert "DNS query latency in seconds" in latency_metric.documentation 
