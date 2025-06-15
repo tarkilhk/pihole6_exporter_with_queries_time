@@ -119,7 +119,10 @@ jobs:
           set -e
           echo "🔄 Reloading systemd & restarting service…"
           sudo systemctl daemon-reload
-          sudo systemctl enable --now pihole6_exporter
+          sudo systemctl enable pihole6_exporter
+          sudo systemctl restart pihole6_exporter
+          echo "📊 Checking service status…"
+          sudo systemctl status pihole6_exporter --no-pager
           echo "🧹 Cleaning up /tmp files…"
           rm -rf /tmp/pihole6_exporter
           echo "✅ Deployment completed successfully."
