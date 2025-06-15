@@ -48,6 +48,10 @@ class PiholeCollector(Collector):
         self.timeout_cnt = 0  # Track DNS timeouts
         self.debug_logged = False  # Only log query structure once per run
 
+        # DNS error tracking
+        self.error_cnt = {}  # Track DNS errors by rcode
+        self.total_queries_processed = 0  # Track total queries for rate calculation
+
         # DNS latency histogram
         self.dns_latency = Histogram(
             name='pihole_dns_latency_seconds',
@@ -130,6 +134,10 @@ class PiholeCollector(Collector):
         # Reset timeout counter
         self.timeout_cnt = 0
 
+        # Reset error tracking
+        self.error_cnt = {}
+        self.total_queries_processed = 0
+
 
     def _process_query(self, q):
         query_type = q["type"]
@@ -211,6 +219,17 @@ class PiholeCollector(Collector):
         if rcode == "TIMEOUT" or status == "TIMEOUT":
             self.timeout_cnt += 1
             logging.info(f"Timeout detected: rcode={rcode}, status={status}")
+
+        # Track DNS errors by rcode
+        self.total_queries_processed += 1
+        
+        # Count errors (excluding NOERROR which is success)
+        if rcode and rcode != "NOERROR":
+            if rcode in self.error_cnt:
+                self.error_cnt[rcode] += 1
+            else:
+                self.error_cnt[rcode] = 1
+            logging.debug(f"DNS error detected: rcode={rcode}, status={status}")
 
 
     def collect(self):
@@ -351,23 +370,21 @@ class PiholeCollector(Collector):
 
             yield q_up
 
-            # Cache hit ratio gauge (from 24h summary data)
+            # Cache metrics - export raw counts, let Prometheus compute ratios
             # Note: We need to get the summary data again since 'reply' now contains query data
             summary_reply = self.get_api_call("stats/summary")
             total_queries = summary_reply["queries"]["total"] if "queries" in summary_reply and "total" in summary_reply["queries"] else 0
             cached_queries = summary_reply["queries"]["cached"] if "queries" in summary_reply and "cached" in summary_reply["queries"] else 0
             
-            cache_hit_ratio = GaugeMetricFamily("pihole_cache_hit_ratio_percent", 
-                                              "Cache hit ratio as percentage (24h)")
-            if total_queries > 0:
-                ratio = (cached_queries / total_queries) * 100
-                cache_hit_ratio.add_metric([], ratio)
-                logging.info(f"Cache hit ratio: {ratio:.2f}% ({cached_queries}/{total_queries})")
-            else:
-                cache_hit_ratio.add_metric([], 0)
-                logging.info("Cache hit ratio: 0% (no queries)")
+            # Export raw cache hit counts - rates can be computed in Grafana/PromQL
+            cache_metrics = GaugeMetricFamily("pihole_cache_queries_total", 
+                                            "Cache query counts (24h)", 
+                                            labels=["cache_status"])
+            cache_metrics.add_metric(["hit"], cached_queries)
+            cache_metrics.add_metric(["total"], total_queries)
+            logging.info(f"Cache metrics: {cached_queries} hits out of {total_queries} total queries")
             
-            yield cache_hit_ratio
+            yield cache_metrics
 
             # DNS timeouts counter (from last minute data)
             dns_timeouts = CounterMetricFamily("pihole_dns_timeouts", 
@@ -376,6 +393,25 @@ class PiholeCollector(Collector):
             logging.info(f"DNS timeouts in last minute: {self.timeout_cnt}")
             
             yield dns_timeouts
+
+            # DNS error counters - export raw counts, let Prometheus compute rates
+            dns_error_counts = CounterMetricFamily("pihole_dns_errors_total", 
+                                                 "Total DNS errors by rcode (last whole 1m)", 
+                                                 labels=["rcode"])
+            
+            # Add error counts for each rcode
+            for rcode, count in self.error_cnt.items():
+                dns_error_counts.add_metric([rcode], count, last_min)
+                logging.info(f"DNS errors for {rcode}: {count} in last minute")
+            
+            # Also add total queries processed as a counter for rate calculations
+            total_queries_counter = CounterMetricFamily("pihole_dns_queries_processed_total",
+                                                      "Total DNS queries processed (last whole 1m)")
+            total_queries_counter.add_metric([], self.total_queries_processed, last_min)
+            logging.info(f"Total queries processed in last minute: {self.total_queries_processed}")
+            
+            yield dns_error_counts
+            yield total_queries_counter
 
             # Add latency histogram metrics
             histogram_metrics = list(self.dns_latency.collect())
