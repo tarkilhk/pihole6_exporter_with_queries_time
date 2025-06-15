@@ -407,18 +407,18 @@ class PiholeCollector(Collector):
 
 
 
-            # DNS timeouts counter (from last minute data)
-            dns_timeouts = CounterMetricFamily("pihole_dns_timeouts_1m", 
-                                             "Total DNS timeout queries (last whole 1m)")
-            dns_timeouts.add_metric([], self.timeout_cnt, last_min)
+            # DNS timeouts gauge (from last minute data)
+            dns_timeouts_gauge = GaugeMetricFamily("pihole_dns_timeouts_1m", 
+                                                 "Total DNS timeout queries (last whole 1m)")
+            dns_timeouts_gauge.add_metric([], self.timeout_cnt, last_min)
             logging.info(f"DNS timeouts in last minute: {self.timeout_cnt}")
             
-            yield dns_timeouts
+            yield dns_timeouts_gauge
 
-            # DNS error counters - export raw counts, let Prometheus compute rates
-            dns_error_counts = CounterMetricFamily("pihole_dns_errors_1m", 
-                                                 "Total DNS errors by rcode (last whole 1m)", 
-                                                 labels=["rcode"])
+            # DNS error gauges - export raw counts, let Prometheus compute rates
+            dns_errors_gauge = GaugeMetricFamily("pihole_dns_errors_1m", 
+                                               "Total DNS errors by rcode (last whole 1m)", 
+                                               labels=["rcode"])
             
             # Define common DNS error codes to always export (even with zero values)
             # Based on standard DNS response codes (rcode) that represent actual errors
@@ -431,7 +431,7 @@ class PiholeCollector(Collector):
             
             # Always export all error codes (including zeros)
             for rcode, count in complete_error_counts.items():
-                dns_error_counts.add_metric([rcode], count, last_min)
+                dns_errors_gauge.add_metric([rcode], count, last_min)
                 if count > 0:
                     logging.info(f"DNS errors for {rcode}: {count} in last minute")
             
@@ -439,14 +439,14 @@ class PiholeCollector(Collector):
             if sum(complete_error_counts.values()) == 0:
                 logging.info("No DNS errors in last minute")
             
-            # Also add total queries processed as a counter for rate calculations
-            total_queries_counter = CounterMetricFamily("pihole_dns_queries_processed_1m",
-                                                      "Total DNS queries processed (last whole 1m)")
-            total_queries_counter.add_metric([], self.total_queries_processed, last_min)
+            # Also add total queries processed as a gauge for rate calculations
+            total_queries_processed_gauge = GaugeMetricFamily("pihole_dns_queries_processed_1m",
+                                                            "Total DNS queries processed (last whole 1m)")
+            total_queries_processed_gauge.add_metric([], self.total_queries_processed, last_min)
             logging.info(f"Total queries processed in last minute: {self.total_queries_processed}")
             
-            yield dns_error_counts
-            yield total_queries_counter
+            yield dns_errors_gauge
+            yield total_queries_processed_gauge
 
             # Create HistogramMetricFamily from manually tracked data
             if self.latency_counts:
