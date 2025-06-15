@@ -22,7 +22,7 @@ jobs:
     - name: Build deploy bundle
       run: |
         mkdir -p deploy_files
-        cp pihole6_exporter           deploy_files/
+        cp pihole6_exporter.py deploy_files/
         cp pihole6_exporter.service   deploy_files/
         cp requirements.txt           deploy_files/
         cp pihole6_exporter.env       deploy_files/
@@ -71,7 +71,7 @@ jobs:
         script: |
           set -e
           echo "📂 Installing binary & systemd unit…"
-          sudo install -m 755 /tmp/pihole6_exporter/pihole6_exporter /usr/local/bin/
+          sudo install -m 755 /tmp/pihole6_exporter/pihole6_exporter.py /usr/local/bin/pihole6_exporter
           sudo install -m 644 /tmp/pihole6_exporter/pihole6_exporter.service /etc/systemd/system/
 
     # ───────────────────────────────────────────────────────────────

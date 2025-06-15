@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *$py.class
 *.so
@@ -27,7 +28,10 @@ ENV/
 
 # IDE
 .idea/
-.vscode/
+.vscode/launch.json
+.vscode/tasks.json
+.vscode/c_cpp_properties.json
+.vscode/extensions.json
 *.swp
 *.swo
 

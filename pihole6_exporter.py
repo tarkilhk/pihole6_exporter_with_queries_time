@@ -8,6 +8,7 @@ import logging
 from datetime import datetime
 from prometheus_client.core import GaugeMetricFamily, REGISTRY
 from prometheus_client import start_http_server
+import os
 
 
 class PiholeCollector(object):
@@ -115,6 +116,44 @@ class PiholeCollector(object):
                 del self.upstream_cnt[k]
 
 
+    def _process_query(self, q):
+        type = q["type"]
+        status = q["status"]
+        replytype = q["reply"]["type"]
+        client = q["client"]["ip"]
+        upstream = q["upstream"]
+        if upstream is None:
+            if status in ("GRAVITY", "CACHE", "SPECIAL_DOMAIN"):
+                upstream = f"None-{status}"
+            else:
+                upstream = "None-OTHER"
+
+        if type in self.type_cnt:
+            self.type_cnt[type] += 1
+        else:
+            self.type_cnt[type] = 1
+
+        if status in self.status_cnt:
+            self.status_cnt[status] += 1
+        else:
+            self.status_cnt[status] = 1
+
+        if replytype in self.reply_cnt:
+            self.reply_cnt[replytype] += 1
+        else:
+            self.reply_cnt[replytype] = 1
+
+        if client in self.client_cnt:
+            self.client_cnt[client] += 1
+        else:
+            self.client_cnt[client] = 1
+
+        if upstream in self.upstream_cnt:
+            self.upstream_cnt[upstream] += 1
+        else:
+            self.upstream_cnt[upstream] = 1
+
+
     def collect(self):
         logging.info("beginning scrape...")
 
@@ -204,8 +243,8 @@ class PiholeCollector(object):
 
             yield upstreams
 
-            now = datetime.now().strftime("%s")
-            last_min = int(now) // 60 * 60
+            now = int(time.time())
+            last_min = now // 60 * 60
             min_before = last_min - 60
 
             reply = self.get_api_call("queries?from=" + str(min_before) + "&until=" + str(last_min) + "&length=1000000")
@@ -213,31 +252,7 @@ class PiholeCollector(object):
             self.clear_cnts()
 
             for q in reply["queries"]:
-                type = q["type"]
-                status = q["status"]
-                replytype = q["reply"]["type"]
-                client = q["client"]["ip"]
-                upstream = q["upstream"]
-                if upstream == None:
-                    if status == "GRAVITY" or status == "CACHE" or status == "SPECIAL_DOMAIN":
-                        upstream = "None-" + status
-                    else:
-                        upstream = "None-OTHER"
-
-                if type in self.type_cnt: self.type_cnt[type] += 1
-                else: self.type_cnt[type] = 1
-
-                if status in self.status_cnt: self.status_cnt[status] += 1
-                else: self.status_cnt[status] = 1
-
-                if replytype in self.reply_cnt: self.reply_cnt[replytype] += 1
-                else: self.reply_cnt[replytype] = 1
-
-                if client in self.client_cnt: self.client_cnt[client] += 1
-                else: self.client_cnt[client] = 1
-
-                if upstream in self.upstream_cnt: self.upstream_cnt[upstream] += 1
-                else: self.upstream_cnt[upstream] = 1
+                self._process_query(q)
 
             q_type = GaugeMetricFamily("pihole_query_type_1m", "Count of query types (last whole 1m)",
                                        labels=["query_type"])
