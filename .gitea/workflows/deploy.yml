@@ -23,10 +23,30 @@ jobs:
           
       - name: Prepare files
         run: |
+          echo "Current directory: $(pwd)"
+          echo "Listing current directory:"
+          ls -la
+          
+          echo "Creating deploy_files directory..."
           mkdir -p deploy_files
-          cp pihole6_exporter deploy_files/
-          cp pihole6_exporter.service deploy_files/
-          cp requirements.txt deploy_files/
+          
+          echo "Copying files to deploy_files..."
+          cp pihole6_exporter deploy_files/ || { echo "Failed to copy pihole6_exporter"; exit 1; }
+          cp pihole6_exporter.service deploy_files/ || { echo "Failed to copy service file"; exit 1; }
+          cp requirements.txt deploy_files/ || { echo "Failed to copy requirements.txt"; exit 1; }
+          
+          echo "Listing deploy_files directory:"
+          ls -la deploy_files/
+          
+      - name: Create target directory on Raspberry Pi
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PIHOLE_HOST }}
+          username: ${{ secrets.PIHOLE_USER }}
+          key: ${{ secrets.PIHOLE_SSH_KEY }}
+          script: |
+            sudo mkdir -p /tmp/pihole6_exporter
+            sudo chmod 777 /tmp/pihole6_exporter
           
       - name: Deploy to Raspberry Pi
         uses: appleboy/ssh-action@master
@@ -39,8 +59,8 @@ jobs:
           script: |
             set -e  # Exit on any error
             
-            # Create directory if it doesn't exist
-            sudo mkdir -p /usr/local/bin
+            # List files to verify they were copied
+            ls -la /tmp/pihole6_exporter/
             
             # Copy the exporter script
             sudo cp /tmp/pihole6_exporter/pihole6_exporter /usr/local/bin/ || { echo "Failed to copy pihole6_exporter"; exit 1; }
