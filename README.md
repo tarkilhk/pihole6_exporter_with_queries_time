@@ -54,12 +54,18 @@ The session ID should stay active as long as it is used at least every 5 minutes
 
 ### Installation
 
+#### Manual Installation
+
 * Copy the exporter itself over to `/usr/local/bin`
 * Copy the systemd service file over to `/etc/systemd/system/` (or anywhere systemd will find it)
     * Modify the `Exec=` line with any command line args (like a key) as needed. Currently there is no config file.
     * For debugging, add `-l DEBUG` to the command line
 * `systemctl start pihole6_exporter` to start the exporter.
 * `systemctl enable pihole6_exporter` to have it start automatically.
+
+#### Automated Deployment
+
+If you have a self-hosted Gitea instance, there's a Gitea Action included that can deploy the exporter directly to your Raspberry Pi automatically on push/merge.
 
 ### Metrics Provided
 
