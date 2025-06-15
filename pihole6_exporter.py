@@ -52,15 +52,12 @@ class PiholeCollector(Collector):
         self.error_cnt = {}  # Track DNS errors by rcode
         self.total_queries_processed = 0  # Track total queries for rate calculation
 
-        # DNS latency histogram with improved buckets for typical DNS response times
-        self.dns_latency = Histogram(
-            name='pihole_dns_latency_seconds_1m',
-            documentation='DNS query latency in seconds (1m)',
-            registry=None,  # Don't auto-register to avoid conflicts
-            buckets=[0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0],
-            labelnames=['status']
-        )
-        logging.info("DNS latency histogram initialized")
+        # DNS latency tracking - manually track histogram data
+        self.latency_buckets = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0]
+        self.latency_counts = {}  # {status: {bucket: count}}
+        self.latency_sums = {}    # {status: total_sum}
+        self.latency_total_counts = {}  # {status: total_count}
+        logging.info("DNS latency tracking initialized with manual buckets")
 
 
     def get_sid(self, key):
@@ -137,6 +134,11 @@ class PiholeCollector(Collector):
         # Reset error tracking
         self.error_cnt = {}
         self.total_queries_processed = 0
+        
+        # Reset latency tracking
+        self.latency_counts = {}
+        self.latency_sums = {}
+        self.latency_total_counts = {}
 
 
     def _process_query(self, q):
@@ -228,8 +230,22 @@ class PiholeCollector(Collector):
                 status_label = "unknown"
                 logging.warning(f"Unknown Pi-hole status '{status}' encountered, categorizing as 'unknown'")
             
-            self.dns_latency.labels(status=status_label).observe(reply_time)
-            logging.debug(f"Observed latency: {reply_time}s for status '{status}' (labeled as '{status_label}')")
+            # Manually track histogram data
+            if status_label not in self.latency_counts:
+                self.latency_counts[status_label] = {str(bucket): 0 for bucket in self.latency_buckets}
+                self.latency_sums[status_label] = 0.0
+                self.latency_total_counts[status_label] = 0
+            
+            # Update sum and total count
+            self.latency_sums[status_label] += reply_time
+            self.latency_total_counts[status_label] += 1
+            
+            # Update bucket counts (cumulative)
+            for bucket in self.latency_buckets:
+                if reply_time <= bucket:
+                    self.latency_counts[status_label][str(bucket)] += 1
+            
+            logging.debug(f"Tracked latency: {reply_time}s for status '{status}' (labeled as '{status_label}')")
         else:
             logging.debug(f"No valid latency data: field={latency_field_found}, value={reply_time}, type={type(reply_time) if reply_time is not None else 'None'}")
 
@@ -421,11 +437,33 @@ class PiholeCollector(Collector):
             yield dns_error_counts
             yield total_queries_counter
 
-            # Add latency histogram metrics
-            histogram_metrics = list(self.dns_latency.collect())
-            logging.info(f"Yielding {len(histogram_metrics)} latency histogram metrics")
-            for metric in histogram_metrics:
-                yield metric
+            # Create HistogramMetricFamily from manually tracked data
+            if self.latency_counts:
+                from prometheus_client.core import HistogramMetricFamily
+                latency_histogram = HistogramMetricFamily(
+                    "pihole_dns_latency_seconds_1m",
+                    "DNS query latency in seconds (1m)",
+                    labels=["status"]
+                )
+                
+                for status_label in self.latency_counts:
+                    buckets = []
+                    for bucket_str in [str(b) for b in self.latency_buckets]:
+                        buckets.append((float(bucket_str), self.latency_counts[status_label][bucket_str]))
+                    
+                    # Add the +Inf bucket
+                    buckets.append((float('inf'), self.latency_total_counts[status_label]))
+                    
+                    latency_histogram.add_metric(
+                        [status_label],
+                        buckets,
+                        self.latency_sums[status_label]
+                    )
+                    logging.info(f"Created latency histogram for {status_label}: {self.latency_total_counts[status_label]} observations, sum={self.latency_sums[status_label]:.3f}s")
+                
+                yield latency_histogram
+            else:
+                logging.info("No latency data to export")
 
             logging.info("scrape completed")
         except Exception as e:
