@@ -35,8 +35,9 @@ jobs:
         host:     ${{ secrets.PIHOLE_HOST }}
         username: ${{ secrets.PIHOLE_USER }}
         key:      ${{ secrets.PIHOLE_SSH_KEY }}
-        source:   "deploy_files/*"
+        source:   "deploy_files"          # send the whole folder
         target:   "/tmp/pihole6_exporter"
+        strip_components: 1               # drop the leading "deploy_files/" dir
         rm:       true                 # clean target dir before upload
 
     # ───────────────────────────────────────────────────────────────
