@@ -37,23 +37,27 @@ jobs:
           source: "deploy_files"
           target: "/tmp/pihole6_exporter"
           script: |
+            set -e  # Exit on any error
+            
             # Create directory if it doesn't exist
             sudo mkdir -p /usr/local/bin
             
             # Copy the exporter script
-            sudo cp /tmp/pihole6_exporter/pihole6_exporter /usr/local/bin/
-            sudo chmod +x /usr/local/bin/pihole6_exporter
+            sudo cp /tmp/pihole6_exporter/pihole6_exporter /usr/local/bin/ || { echo "Failed to copy pihole6_exporter"; exit 1; }
+            sudo chmod +x /usr/local/bin/pihole6_exporter || { echo "Failed to make pihole6_exporter executable"; exit 1; }
             
             # Set up the service
-            sudo cp /tmp/pihole6_exporter/pihole6_exporter.service /etc/systemd/system/
-            sudo systemctl daemon-reload
-            sudo systemctl enable pihole6_exporter
+            sudo cp /tmp/pihole6_exporter/pihole6_exporter.service /etc/systemd/system/ || { echo "Failed to copy service file"; exit 1; }
+            sudo systemctl daemon-reload || { echo "Failed to reload systemd"; exit 1; }
+            sudo systemctl enable pihole6_exporter || { echo "Failed to enable service"; exit 1; }
             
             # Install dependencies
-            sudo pip3 install -r /tmp/pihole6_exporter/requirements.txt
+            sudo pip3 install -r /tmp/pihole6_exporter/requirements.txt || { echo "Failed to install dependencies"; exit 1; }
             
             # Restart the service
-            sudo systemctl restart pihole6_exporter
+            sudo systemctl restart pihole6_exporter || { echo "Failed to restart service"; exit 1; }
             
             # Clean up
-            rm -rf /tmp/pihole6_exporter 
+            rm -rf /tmp/pihole6_exporter
+            
+            echo "Deployment completed successfully" 
