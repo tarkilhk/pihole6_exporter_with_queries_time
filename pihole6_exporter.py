@@ -449,10 +449,10 @@ class PiholeCollector(Collector):
                 for status_label in self.latency_counts:
                     buckets = []
                     for bucket_str in [str(b) for b in self.latency_buckets]:
-                        buckets.append((float(bucket_str), self.latency_counts[status_label][bucket_str]))
+                        buckets.append((bucket_str, self.latency_counts[status_label][bucket_str]))
                     
                     # Add the +Inf bucket
-                    buckets.append((float('inf'), self.latency_total_counts[status_label]))
+                    buckets.append(("+Inf", self.latency_total_counts[status_label]))
                     
                     latency_histogram.add_metric(
                         [status_label],
