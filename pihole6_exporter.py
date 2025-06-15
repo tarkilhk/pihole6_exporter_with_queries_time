@@ -5,8 +5,8 @@ import time
 import requests
 import urllib3
 import logging
-from prometheus_client import CollectorRegistry, Histogram
-from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily
+from prometheus_client import Histogram
+from prometheus_client.core import GaugeMetricFamily
 from prometheus_client.registry import Collector
 from prometheus_client import start_http_server
 
