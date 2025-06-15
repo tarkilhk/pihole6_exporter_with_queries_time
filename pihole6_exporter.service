@@ -4,7 +4,8 @@ After=pihole-FTL.service
 Requires=pihole-FTL.service   # optional but tightens coupling
 
 [Service]
-ExecStart=/opt/pihole6_exporter/venv/bin/python /usr/local/bin/pihole6_exporter
+EnvironmentFile=/etc/pihole6_exporter/pihole6_exporter.env
+ExecStart=/opt/pihole6_exporter/venv/bin/python /usr/local/bin/pihole6_exporter -H localhost -k ${PIHOLE_API_TOKEN}
 Type=simple                   # or just delete this line (simple is default)
 Restart=always
 RestartSec=5s                 # small back-off between restarts

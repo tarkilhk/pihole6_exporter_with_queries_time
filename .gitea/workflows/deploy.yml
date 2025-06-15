@@ -25,6 +25,7 @@ jobs:
         cp pihole6_exporter           deploy_files/
         cp pihole6_exporter.service   deploy_files/
         cp requirements.txt           deploy_files/
+        cp pihole6_exporter.env       deploy_files/
 
     # ───────────────────────────────────────────────────────────────
     # 3)  Secure-copy the bundle to the Raspberry Pi
@@ -91,7 +92,22 @@ jobs:
           sudo /opt/pihole6_exporter/venv/bin/pip install --no-cache-dir -r /tmp/pihole6_exporter/requirements.txt
 
     # ───────────────────────────────────────────────────────────────
-    # 7)  Reload systemd, enable & restart service, clean up tmp dir
+    # 7)  Install .env file
+    # ───────────────────────────────────────────────────────────────
+    - name: Install .env file
+      uses: appleboy/ssh-action@v1
+      with:
+        host:     ${{ secrets.PIHOLE_HOST }}
+        username: ${{ secrets.PIHOLE_USER }}
+        key:      ${{ secrets.PIHOLE_SSH_KEY }}
+        script: |
+          set -e
+          echo "🔐 Installing .env file…"
+          sudo install -d /etc/pihole6_exporter
+          sudo install -m 600 /tmp/pihole6_exporter/pihole6_exporter.env /etc/pihole6_exporter/pihole6_exporter.env
+
+    # ───────────────────────────────────────────────────────────────
+    # 8)  Reload systemd, enable & restart service, clean up tmp dir
     # ───────────────────────────────────────────────────────────────
     - name: Reload & restart service, clean up
       uses: appleboy/ssh-action@v1
