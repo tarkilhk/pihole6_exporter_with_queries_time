@@ -6,6 +6,7 @@ import requests
 import urllib3
 import logging
 import argparse
+import psutil
 from prometheus_client import Histogram, Counter
 from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, REGISTRY
 from prometheus_client.registry import Collector
@@ -139,6 +140,95 @@ class PiholeCollector(Collector):
         self.latency_counts = {}
         self.latency_sums = {}
         self.latency_total_counts = {}
+
+    def _get_sdcard_wear_percent(self):
+        """Return estimated SD card wear level (0-100) or 0 if unavailable."""
+        path = "/sys/block/mmcblk0/device/life_time"
+        try:
+            with open(path, "r") as f:
+                data = f.read().strip().split()
+            if len(data) >= 2:
+                val = max(int(data[0], 16), int(data[1], 16))
+                if val > 0:
+                    return min((val - 1) * 10, 100)
+        except Exception as e:
+            logging.debug(f"SD card life_time not available: {e}")
+        return 0
+
+    def _collect_system_metrics(self):
+        mem = psutil.virtual_memory()
+        metrics = [
+            GaugeMetricFamily(
+                "system_memory_usage_bytes",
+                "Used memory in bytes",
+                value=mem.used,
+            ),
+            GaugeMetricFamily(
+                "system_memory_total_bytes",
+                "Total memory in bytes",
+                value=mem.total,
+            ),
+            GaugeMetricFamily(
+                "system_cpu_usage_percent",
+                "CPU usage percentage",
+                value=psutil.cpu_percent(interval=None),
+            ),
+        ]
+
+        try:
+            load1, load5, load15 = os.getloadavg()
+            metrics.extend(
+                [
+                    GaugeMetricFamily("system_load1", "1 minute load average", value=load1),
+                    GaugeMetricFamily("system_load5", "5 minute load average", value=load5),
+                    GaugeMetricFamily("system_load15", "15 minute load average", value=load15),
+                ]
+            )
+        except OSError as e:
+            logging.debug(f"Load average not available: {e}")
+
+        disk = psutil.disk_usage("/")
+        metrics.extend(
+            [
+                GaugeMetricFamily(
+                    "system_disk_usage_bytes",
+                    "Used disk space on root filesystem in bytes",
+                    value=disk.used,
+                ),
+                GaugeMetricFamily(
+                    "system_disk_total_bytes",
+                    "Total disk space on root filesystem in bytes",
+                    value=disk.total,
+                ),
+            ]
+        )
+
+        net = psutil.net_io_counters()
+        metrics.extend(
+            [
+                CounterMetricFamily(
+                    "system_network_receive_bytes",
+                    "Total bytes received on all interfaces",
+                    value=net.bytes_recv,
+                ),
+                CounterMetricFamily(
+                    "system_network_transmit_bytes",
+                    "Total bytes transmitted on all interfaces",
+                    value=net.bytes_sent,
+                ),
+            ]
+        )
+
+        wear = self._get_sdcard_wear_percent()
+        metrics.append(
+            GaugeMetricFamily(
+                "system_sdcard_wear_percent",
+                "Estimated SD card wear level (0-100). 0 if unknown",
+                value=wear,
+            )
+        )
+
+        return metrics
 
 
     def _process_query(self, q):
@@ -475,6 +565,10 @@ class PiholeCollector(Collector):
                 yield latency_histogram
             else:
                 logging.info("No latency data to export")
+
+            # System resource metrics
+            for metric in self._collect_system_metrics():
+                yield metric
 
             logging.info("scrape completed")
         except Exception as e:

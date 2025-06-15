@@ -9,9 +9,10 @@ This is a comprehensive Prometheus exporter for the new API in Pi-hole version 6
 ✅ **DNS Latency Monitoring** - Histogram metrics for DNS response times  
 ✅ **DNS Error Tracking** - Error counters by response code (SERVFAIL, NXDOMAIN, etc.)  
 ✅ **Cache Hit Ratio** - Raw cache metrics for flexible rate calculations  
-✅ **Timeout Detection** - DNS timeout monitoring and alerting  
-✅ **Prometheus Best Practices** - Raw counters instead of computed rates  
-✅ **Comprehensive Testing** - Full test suite with mock data  
+✅ **Timeout Detection** - DNS timeout monitoring and alerting
+✅ **Prometheus Best Practices** - Raw counters instead of computed rates
+✅ **Comprehensive Testing** - Full test suite with mock data
+✅ **System Resource Metrics** - CPU, memory, disk, network, and SD card wear
 
 ## pihole6_exporter
 
@@ -100,6 +101,22 @@ These are per-1m metrics that can be aggregated over time periods other than jus
 | `pihole_dns_errors_1m` | Counter | DNS errors by response code (1m) | `rcode` |
 | `pihole_dns_queries_processed_1m` | Counter | Total DNS queries processed (1m) | *None* |
 | `pihole_dns_timeouts_1m` | Counter | DNS timeout queries (1m) | *None* |
+
+#### System Metrics
+
+These metrics expose Raspberry Pi system information for convenience:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `system_cpu_usage_percent` | Gauge | CPU utilization percentage |
+| `system_load1` / `system_load5` / `system_load15` | Gauge | Load averages |
+| `system_memory_usage_bytes` | Gauge | Used RAM in bytes |
+| `system_memory_total_bytes` | Gauge | Total RAM in bytes |
+| `system_disk_usage_bytes` | Gauge | Used root filesystem space |
+| `system_disk_total_bytes` | Gauge | Total root filesystem space |
+| `system_network_receive_bytes` | Counter | Bytes received on all interfaces |
+| `system_network_transmit_bytes` | Counter | Bytes sent on all interfaces |
+| `system_sdcard_wear_percent` | Gauge | Estimated SD card wear level |
 
 ### Using the Metrics
 
