@@ -7,11 +7,9 @@ import urllib3
 import logging
 import argparse
 import psutil
-from prometheus_client import Histogram, Counter
 from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, REGISTRY
 from prometheus_client.registry import Collector
 from prometheus_client import start_http_server
-import platform
 
 class PiholeCollector(Collector):
 
