@@ -13,6 +13,8 @@ from prometheus_client import start_http_server
 
 class PiholeCollector(Collector):
 
+    CACHE_TTL = 3600
+
 
     def __init__(self, host="localhost", key=None):
 
@@ -47,6 +49,7 @@ class PiholeCollector(Collector):
         self.upstream_cnt = {}
         self.timeout_cnt = 0  # Track DNS timeouts
         self.debug_logged = False  # Only log query structure once per run
+        self.hostname_cache = {}
 
         # DNS error tracking
         self.error_cnt = {}  # Track DNS errors by rcode
@@ -233,12 +236,25 @@ class PiholeCollector(Collector):
 
         return metrics
 
+    def resolve_hostname(self, ip):
+        """Resolve an IP address to a hostname with caching."""
+        now = time.time()
+        cached = self.hostname_cache.get(ip)
+        if cached and now - cached[1] < self.CACHE_TTL:
+            return cached[0]
+        try:
+            hostname = socket.gethostbyaddr(ip)[0]
+        except Exception:
+            hostname = None
+        self.hostname_cache[ip] = (hostname, now)
+        return hostname
+
 
     def _process_query(self, q):
         query_type = q["type"]
         status = q["status"]
         replytype = q["reply"]["type"]
-        client = q["client"]["ip"]
+        client = self.resolve_hostname(q["client"]["ip"]) or q["client"]["ip"]
         upstream = q["upstream"]
         
         # DEBUG: Log the structure of the first query to understand available fields
