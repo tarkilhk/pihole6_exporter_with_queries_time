@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import patch
+import socket
 from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily
 import importlib.util
 import sys
@@ -80,7 +81,8 @@ QUERIES_RESPONSE = {
 def test_collect_yields_expected_metrics():
     """Integration test: ensure collect yields expected metrics from real code path."""
     # Need 4 API calls: summary, upstreams, queries, summary again for cache metrics
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]):
+    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+         patch('socket.gethostbyaddr', side_effect=socket.herror):
         collector = PiholeCollector()
         metrics = list(collector.collect())
         
@@ -99,7 +101,8 @@ def test_collect_yields_expected_metrics():
 
 def test_cache_metrics_in_query_count():
     """Test that cache metrics are available in pihole_query_count"""
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE]):
+    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE]), \
+         patch('socket.gethostbyaddr', side_effect=socket.herror):
         collector = PiholeCollector()
         metrics = list(collector.collect())
         
@@ -122,7 +125,8 @@ def test_cache_metrics_in_query_count():
 
 def test_dns_error_counters():
     """Test that DNS errors are counted by rcode as raw counters."""
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]):
+    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+         patch('socket.gethostbyaddr', side_effect=socket.herror):
         collector = PiholeCollector()
         metrics = list(collector.collect())
         
@@ -141,7 +145,8 @@ def test_dns_error_counters():
 
 def test_dns_queries_processed_counter():
     """Test that total queries processed counter is exported."""
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]):
+    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+         patch('socket.gethostbyaddr', side_effect=socket.herror):
         collector = PiholeCollector()
         metrics = list(collector.collect())
         
@@ -158,7 +163,8 @@ def test_dns_queries_processed_counter():
 
 def test_dns_timeout_counter():
     """Test that DNS timeouts are counted correctly."""
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]):
+    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+         patch('socket.gethostbyaddr', side_effect=socket.herror):
         collector = PiholeCollector()
         metrics = list(collector.collect())
         
@@ -174,7 +180,8 @@ def test_dns_timeout_counter():
 
 def test_latency_histogram_in_collect():
     """Test that DNS latency histogram is yielded by collect."""
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]):
+    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+         patch('socket.gethostbyaddr', side_effect=socket.herror):
         collector = PiholeCollector()
         metrics = list(collector.collect())
         
@@ -192,7 +199,8 @@ def test_latency_histogram_in_collect():
 
 def test_system_metrics_present():
     """Ensure system metrics are exported."""
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]):
+    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+         patch('socket.gethostbyaddr', side_effect=socket.herror):
         collector = PiholeCollector()
         metrics = list(collector.collect())
 
@@ -209,3 +217,51 @@ def test_system_metrics_present():
             expected.append('system_load1')
         for name in expected:
             assert name in metric_names
+
+
+def test_hostname_resolution_for_client_label():
+    """Ensure resolved hostnames are used for client labels when available."""
+    def fake_gethost(ip):
+        if ip == "192.168.1.2":
+            return ("device.local", [], [ip])
+        raise socket.herror
+
+    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+         patch('socket.gethostbyaddr', side_effect=fake_gethost):
+        collector = PiholeCollector()
+        metrics = list(collector.collect())
+
+        client_metrics = [m for m in metrics if getattr(m, 'name', '') == "pihole_query_client_1m"]
+        assert client_metrics, "Client metric missing"
+        labels = [s.labels['query_client'] for s in client_metrics[0].samples if s.name == "pihole_query_client_1m"]
+        assert "device.local" in labels
+
+
+def test_hostname_resolution_failure_uses_ip():
+    """If a hostname can't be resolved, the IP should be used as the label."""
+    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+         patch('socket.gethostbyaddr', side_effect=socket.herror):
+        collector = PiholeCollector()
+        metrics = list(collector.collect())
+
+        client_metrics = [m for m in metrics if getattr(m, 'name', '') == "pihole_query_client_1m"]
+        assert client_metrics, "Client metric missing"
+        labels = [s.labels['query_client'] for s in client_metrics[0].samples if s.name == "pihole_query_client_1m"]
+        # All client IPs should appear as labels since resolution fails
+        for ip in ["192.168.1.2", "192.168.1.3", "192.168.1.4", "192.168.1.5"]:
+            assert ip in labels
+
+
+def test_hostname_resolution_cache_hit_and_miss():
+    """resolve_hostname should use cache until TTL expires."""
+    collector = PiholeCollector()
+    with patch('socket.gethostbyaddr', return_value=("host.local", [], ["1.2.3.4"])) as mock_resolve, \
+         patch('time.time', side_effect=[0, 1, collector.CACHE_TTL + 1]):
+        # First lookup populates cache
+        assert collector.resolve_hostname('1.2.3.4') == "host.local"
+        # Within TTL, should not call resolver again
+        assert collector.resolve_hostname('1.2.3.4') == "host.local"
+        assert mock_resolve.call_count == 1
+        # After TTL expiry, resolver should be called again
+        assert collector.resolve_hostname('1.2.3.4') == "host.local"
+        assert mock_resolve.call_count == 2
