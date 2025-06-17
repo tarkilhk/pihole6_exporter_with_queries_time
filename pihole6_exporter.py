@@ -10,6 +10,7 @@ import psutil
 from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, REGISTRY
 from prometheus_client.registry import Collector
 from prometheus_client import start_http_server
+import socket
 
 class PiholeCollector(Collector):
 
@@ -245,7 +246,7 @@ class PiholeCollector(Collector):
         try:
             hostname = socket.gethostbyaddr(ip)[0]
         except Exception:
-            hostname = None
+            hostname = ip
         self.hostname_cache[ip] = (hostname, now)
         return hostname
 
@@ -254,7 +255,7 @@ class PiholeCollector(Collector):
         query_type = q["type"]
         status = q["status"]
         replytype = q["reply"]["type"]
-        client = self.resolve_hostname(q["client"]["ip"]) or q["client"]["ip"]
+        client = self.resolve_hostname(q["client"]["ip"])
         upstream = q["upstream"]
         
         # DEBUG: Log the structure of the first query to understand available fields

@@ -257,11 +257,11 @@ def test_hostname_resolution_cache_hit_and_miss():
     collector = PiholeCollector()
     with patch('socket.gethostbyaddr', return_value=("host.local", [], ["1.2.3.4"])) as mock_resolve, \
          patch('time.time', side_effect=[0, 1, collector.CACHE_TTL + 1]):
-        # First lookup populates cache
+        # First lookup: cache is empty, should call resolver and cache result
         assert collector.resolve_hostname('1.2.3.4') == "host.local"
-        # Within TTL, should not call resolver again
+        # Second lookup: within TTL, should use cache (resolver NOT called again)
         assert collector.resolve_hostname('1.2.3.4') == "host.local"
-        assert mock_resolve.call_count == 1
-        # After TTL expiry, resolver should be called again
+        assert mock_resolve.call_count == 1  # Only first call hit the resolver
+        # Third lookup: after TTL, should call resolver again (cache expired)
         assert collector.resolve_hostname('1.2.3.4') == "host.local"
-        assert mock_resolve.call_count == 2
+        assert mock_resolve.call_count == 2  # Resolver called again after cache expiry
