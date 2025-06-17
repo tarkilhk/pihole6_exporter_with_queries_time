@@ -4,6 +4,7 @@ from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily
 import importlib.util
 import sys
 from pathlib import Path
+import os
 
 # Dynamically import the script as a module
 script_path = Path(__file__).parent.parent / "pihole6_exporter.py"
@@ -151,7 +152,7 @@ def test_dns_queries_processed_counter():
         
         total_metric = total_metrics[0]
         # From QUERIES_RESPONSE: 4 queries total
-        total_samples = [s for s in total_metric.samples if s.name.endswith('_total')]
+        total_samples = [s for s in total_metric.samples if s.name == "pihole_dns_queries_processed_1m"]
         assert len(total_samples) == 1
         assert total_samples[0].value == 4
 
@@ -167,7 +168,7 @@ def test_dns_timeout_counter():
         
         timeout_metric = timeout_metrics[0]
         # From QUERIES_RESPONSE: one query has "rcode": "TIMEOUT", so count should be 1
-        total_samples = [s for s in timeout_metric.samples if s.name.endswith('_total')]
+        total_samples = [s for s in timeout_metric.samples if s.name == "pihole_dns_timeouts_1m"]
         assert len(total_samples) == 1
         assert total_samples[0].value == 1
 
@@ -189,7 +190,6 @@ def test_latency_histogram_in_collect():
         assert latency_metric.name == "pihole_dns_latency_seconds_1m"
         assert "DNS query latency in seconds" in latency_metric.documentation
 
-
 def test_system_metrics_present():
     """Ensure system metrics are exported."""
     with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]):
@@ -200,12 +200,12 @@ def test_system_metrics_present():
 
         expected = [
             'system_cpu_usage_percent',
-            'system_load1',
             'system_memory_usage_bytes',
             'system_disk_usage_bytes',
             'system_network_receive_bytes',
             'system_sdcard_wear_percent',
         ]
-
+        if hasattr(os, "getloadavg"):
+            expected.append('system_load1')
         for name in expected:
             assert name in metric_names

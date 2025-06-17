@@ -11,6 +11,7 @@ from prometheus_client import Histogram, Counter
 from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, REGISTRY
 from prometheus_client.registry import Collector
 from prometheus_client import start_http_server
+import platform
 
 class PiholeCollector(Collector):
 
@@ -175,17 +176,21 @@ class PiholeCollector(Collector):
             ),
         ]
 
-        try:
-            load1, load5, load15 = os.getloadavg()
-            metrics.extend(
-                [
-                    GaugeMetricFamily("system_load1", "1 minute load average", value=load1),
-                    GaugeMetricFamily("system_load5", "5 minute load average", value=load5),
-                    GaugeMetricFamily("system_load15", "15 minute load average", value=load15),
-                ]
-            )
-        except OSError as e:
-            logging.debug(f"Load average not available: {e}")
+        # Cross-platform load average
+        if hasattr(os, "getloadavg"):
+            try:
+                load1, load5, load15 = os.getloadavg()
+                metrics.extend(
+                    [
+                        GaugeMetricFamily("system_load1", "1 minute load average", value=load1),
+                        GaugeMetricFamily("system_load5", "5 minute load average", value=load5),
+                        GaugeMetricFamily("system_load15", "15 minute load average", value=load15),
+                    ]
+                )
+            except OSError as e:
+                logging.debug(f"Load average not available: {e}")
+        else:
+            logging.debug("Load average not available on this OS.")
 
         disk = psutil.disk_usage("/")
         metrics.extend(
