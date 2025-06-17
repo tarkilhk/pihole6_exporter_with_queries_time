@@ -87,7 +87,7 @@ These are per-24h metrics provided by the API, like the ones used in the stats o
 
 #### Per-Minute Metrics
 
-These are per-1m metrics that can be aggregated over time periods other than just 24h, and in various ways to derive the same stats as above and more. **Following Prometheus best practices, counter metrics export raw counts. Use `rate()` functions in PromQL/Grafana to compute rates.**
+These are per-1m metrics that can be aggregated over time periods other than just 24h, and in various ways to derive the same stats as above and more. **These are windowed gauge metrics that show counts from the last complete minute and reset each minute.**
 
 | Metric | Type | Description | Labels |
 |--------|------|-------------|--------|
@@ -97,9 +97,9 @@ These are per-1m metrics that can be aggregated over time periods other than jus
 | `pihole_query_reply_1m` | Gauge | Count of queries by reply type (1m) | `query_reply` |
 | `pihole_query_client_1m` | Gauge | Count of queries by client (1m) | `query_client` |
 | `pihole_dns_latency_seconds_1m` | Histogram | DNS query response time in seconds (1m) | `status` |
-| `pihole_dns_errors_1m` | Counter | DNS errors by response code (1m) | `rcode` |
-| `pihole_dns_queries_processed_1m` | Counter | Total DNS queries processed (1m) | *None* |
-| `pihole_dns_timeouts_1m` | Counter | DNS timeout queries (1m) | *None* |
+| `pihole_dns_errors_1m` | Gauge | DNS errors by response code (1m) | `rcode` |
+| `pihole_dns_queries_processed_1m` | Gauge | Total DNS queries processed (1m) | *None* |
+| `pihole_dns_timeouts_1m` | Gauge | DNS timeout queries (1m) | *None* |
 
 ### Using the Metrics
 
@@ -114,8 +114,8 @@ For detailed examples of how to use these metrics in Grafana and PromQL, includi
 #### Quick Examples
 
 ```promql
-# DNS error rate over 5 minutes
-rate(pihole_dns_errors_1m[5m]) / rate(pihole_dns_queries_processed_1m[5m]) * 100
+# DNS error rate (as percentage of total queries in last minute)
+sum(pihole_dns_errors_1m) / pihole_dns_queries_processed_1m * 100
 
 # Cache hit ratio
 pihole_query_count{category="cached"} / pihole_query_count{category="total"} * 100

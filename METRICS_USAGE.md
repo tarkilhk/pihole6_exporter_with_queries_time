@@ -2,14 +2,16 @@
 
 This guide explains how to use the raw metrics exported by the Pi-hole exporter to create meaningful dashboards and alerts in Grafana/Prometheus.
 
-## Philosophy: Raw Counters vs Computed Rates
+## Philosophy: Raw Metrics vs Computed Rates
 
-Following Prometheus best practices, this exporter provides **raw counters** rather than pre-computed rates. This approach offers several advantages:
+Following Prometheus best practices, this exporter provides **raw metrics** rather than pre-computed rates. This approach offers several advantages:
 
-- **Flexibility**: Different time windows for rate calculations
-- **Accuracy**: Prometheus handles counter resets and edge cases properly
+- **Flexibility**: Different time windows and aggregation methods  
+- **Accuracy**: Proper handling of metric resets and edge cases
 - **Consistency**: Standard pattern across all Prometheus exporters
 - **Alerting**: Better support for alerting rules
+
+**Note**: The 1-minute window metrics are **gauges** that show counts from the last complete minute and reset each scrape, while histogram metrics remain as counters (which is correct for histograms).
 
 ## Complete Metrics Reference
 
@@ -142,49 +144,51 @@ These metrics are computed from the actual query log for the last complete minut
 
 **PromQL Examples:**
 ```promql
-# Query rate by type over 5 minutes
-rate(pihole_query_type_1m[5m])
+# Query counts by type in last minute
+pihole_query_type_1m
 
-# Query rate by status over 5 minutes
-rate(pihole_query_status_1m[5m])
+# Query counts by status in last minute
+pihole_query_status_1m
 
-# Top clients by query rate
-topk(10, rate(pihole_query_client_1m[5m]))
+# Top clients by query count
+topk(10, pihole_query_client_1m)
 
-# Upstream distribution rate
-rate(pihole_query_upstream_1m[5m])
+# Upstream distribution counts
+pihole_query_upstream_1m
 ```
 
 #### DNS Error Monitoring
 **Metrics:**
-- `pihole_dns_errors_1m` - DNS errors by response code (Counter)
-- `pihole_dns_queries_processed_1m` - Total queries processed (Counter)
+- `pihole_dns_errors_1m` - DNS errors by response code (Gauge)
+- `pihole_dns_queries_processed_1m` - Total queries processed (Gauge)
+
+**Note:** Common DNS error codes (SERVFAIL, NXDOMAIN, REFUSED, FORMERR, NOTIMP) are always exported, even with zero values.
 
 **PromQL Examples:**
 ```promql
-# DNS error rate over 5 minutes (percentage)
-sum(rate(pihole_dns_errors_1m[5m])) / rate(pihole_dns_queries_processed_1m[5m]) * 100
+# DNS error rate (percentage of total queries in last minute)
+sum(pihole_dns_errors_1m) / pihole_dns_queries_processed_1m * 100
 
 # SERVFAIL error rate specifically
-rate(pihole_dns_errors_1m{rcode="SERVFAIL"}[5m]) / rate(pihole_dns_queries_processed_1m[5m]) * 100
+pihole_dns_errors_1m{rcode="SERVFAIL"} / pihole_dns_queries_processed_1m * 100
 
 # Error rate by error type
-rate(pihole_dns_errors_1m[5m]) / rate(pihole_dns_queries_processed_1m[5m]) * 100
+pihole_dns_errors_1m / pihole_dns_queries_processed_1m * 100
 ```
 
 #### DNS Timeout Monitoring
 **Metric:** `pihole_dns_timeouts_1m`
-- **Type:** Counter
+- **Type:** Gauge
 - **Labels:** None
-- **Description:** Total DNS timeout queries
+- **Description:** DNS timeout queries in last minute
 
 **PromQL Examples:**
 ```promql
-# Timeout rate over 5 minutes
-rate(pihole_dns_timeouts_1m[5m])
+# Timeout count in last minute
+pihole_dns_timeouts_1m
 
 # Timeout percentage
-rate(pihole_dns_timeouts_1m[5m]) / rate(pihole_dns_queries_processed_1m[5m]) * 100
+pihole_dns_timeouts_1m / pihole_dns_queries_processed_1m * 100
 ```
 
 #### DNS Latency Monitoring
@@ -250,7 +254,7 @@ pihole_query_count{category="blocked"} / pihole_query_count{category="total"} * 
 
 **DNS Error Rate:**
 ```promql
-sum(rate(pihole_dns_errors_1m[5m])) / rate(pihole_dns_queries_processed_1m[5m]) * 100
+sum(pihole_dns_errors_1m) / pihole_dns_queries_processed_1m * 100
 ```
 - Unit: Percent (0-100)
 - Thresholds: Green < 1%, Yellow < 5%, Red >= 5%
@@ -292,23 +296,23 @@ pihole_domains_being_blocked
 
 ### Time Series Graphs
 
-**Query Rate by Type:**
+**Query Count by Type:**
 ```promql
-rate(pihole_query_type_1m[5m])
+pihole_query_type_1m
 ```
 - Legend: `{{query_type}}`
-- Y-axis: Queries per second
+- Y-axis: Query count (last minute)
 
-**Query Rate by Status:**
+**Query Count by Status:**
 ```promql
-rate(pihole_query_status_1m[5m])
+pihole_query_status_1m
 ```
 - Legend: `{{query_status}}`
-- Y-axis: Queries per second
+- Y-axis: Query count (last minute)
 
 **DNS Error Rates by Type:**
 ```promql
-rate(pihole_dns_errors_1m[5m]) / rate(pihole_dns_queries_processed_1m[5m]) * 100
+pihole_dns_errors_1m / pihole_dns_queries_processed_1m * 100
 ```
 - Legend: `{{rcode}} errors`
 - Y-axis: Percent
@@ -329,19 +333,19 @@ rate(pihole_dns_latency_seconds_1m_sum{status="forwarded"}[5m]) / rate(pihole_dn
 - Legend: `{{status}} latency`
 - Y-axis: Milliseconds
 
-**Top Clients by Query Rate:**
+**Top Clients by Query Count:**
 ```promql
-topk(10, rate(pihole_query_client_1m[5m]))
+topk(10, pihole_query_client_1m)
 ```
 - Legend: `{{query_client}}`
-- Y-axis: Queries per second
+- Y-axis: Query count (last minute)
 
 **Upstream Distribution:**
 ```promql
-rate(pihole_query_upstream_1m[5m])
+pihole_query_upstream_1m
 ```
 - Legend: `{{query_upstream}}`
-- Y-axis: Queries per second
+- Y-axis: Query count (last minute)
 
 ## Prometheus Alerting Rules
 
@@ -350,13 +354,13 @@ groups:
 - name: pihole_alerts
   rules:
   - alert: PiHoleDNSErrorRateHigh
-    expr: sum(rate(pihole_dns_errors_1m[5m])) / rate(pihole_dns_queries_processed_1m[5m]) * 100 > 5
+    expr: sum(pihole_dns_errors_1m) / pihole_dns_queries_processed_1m * 100 > 5
     for: 2m
     labels:
       severity: warning
     annotations:
       summary: "Pi-hole DNS error rate is high"
-      description: "DNS error rate is {{ $value | humanize }}% over the last 5 minutes"
+      description: "DNS error rate is {{ $value | humanize }}% in the last minute"
 
   - alert: PiHoleCacheHitRateLow
     expr: pihole_query_count{category="cached"} / pihole_query_count{category="total"} * 100 < 70
@@ -386,22 +390,22 @@ groups:
       description: "95th percentile forwarded DNS latency is {{ $value | humanize }}s"
 
   - alert: PiHoleDNSTimeouts
-    expr: rate(pihole_dns_timeouts_1m[5m]) > 0
+    expr: pihole_dns_timeouts_1m > 0
     for: 1m
     labels:
       severity: critical
     annotations:
       summary: "Pi-hole DNS timeouts detected"
-      description: "{{ $value | humanize }} DNS timeouts per second"
+      description: "{{ $value | humanize }} DNS timeouts in the last minute"
 
   - alert: PiHoleSpecificErrorTypeHigh
-    expr: rate(pihole_dns_errors_1m{rcode="SERVFAIL"}[5m]) / rate(pihole_dns_queries_processed_1m[5m]) * 100 > 2
+    expr: pihole_dns_errors_1m{rcode="SERVFAIL"} / pihole_dns_queries_processed_1m * 100 > 2
     for: 2m
     labels:
       severity: warning
     annotations:
       summary: "Pi-hole SERVFAIL errors high"
-      description: "SERVFAIL error rate is {{ $value | humanize }}% over the last 5 minutes"
+      description: "SERVFAIL error rate is {{ $value | humanize }}% in the last minute"
 
   - alert: PiHoleBlockRateLow
     expr: pihole_query_count{category="blocked"} / pihole_query_count{category="total"} * 100 < 10
@@ -424,18 +428,19 @@ groups:
 
 ## Benefits of This Approach
 
-1. **Flexible Time Windows**: Use different time ranges (`[1m]`, `[5m]`, `[1h]`) for different use cases
-2. **Proper Counter Handling**: Prometheus automatically handles counter resets
-3. **Accurate Rates**: Built-in functions handle edge cases and interpolation
+1. **Flexible Time Windows**: Use different time ranges for different use cases
+2. **Proper Metric Handling**: Appropriate metric types for different data patterns
+3. **Accurate Calculations**: Built-in functions handle edge cases and interpolation
 4. **Standard Patterns**: Consistent with other Prometheus exporters
 5. **Better Alerting**: More reliable threshold detection over time
 6. **Status-based Analysis**: Separate monitoring of cache vs forwarded query performance
 7. **Complete Coverage**: All Pi-hole statistics available for monitoring and analysis
+8. **Consistent Metrics**: DNS error codes always exported (even with zero values) for reliable monitoring
 
 ## Usage Notes
 
 - **24-hour metrics** are great for overall trends and daily comparisons
-- **1-minute metrics** are better for real-time monitoring and alerting
-- **Histogram metrics** provide detailed latency analysis with percentiles
-- **Counter metrics** should always be used with `rate()` function for meaningful rates
-- **Gauge metrics** can be used directly or with functions like `increase()` for trending 
+- **1-minute gauge metrics** show windowed counts and are better for real-time monitoring and alerting
+- **Histogram metrics** provide detailed latency analysis with percentiles (these remain as counters)
+- **Histogram counter metrics** should always be used with `rate()` function for meaningful rates
+- **Gauge metrics** can be used directly for current values or with aggregation functions for analysis 
