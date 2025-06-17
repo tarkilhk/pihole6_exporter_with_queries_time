@@ -234,7 +234,7 @@ def test_hostname_resolution_for_client_label():
         client_metrics = [m for m in metrics if getattr(m, 'name', '') == "pihole_query_client_1m"]
         assert client_metrics, "Client metric missing"
         labels = [s.labels['query_client'] for s in client_metrics[0].samples if s.name == "pihole_query_client_1m"]
-        assert "device.local" in labels
+        assert "device" in labels
 
 
 def test_hostname_resolution_failure_uses_ip():
@@ -258,10 +258,10 @@ def test_hostname_resolution_cache_hit_and_miss():
     with patch('socket.gethostbyaddr', return_value=("host.local", [], ["1.2.3.4"])) as mock_resolve, \
          patch('time.time', side_effect=[0, 1, collector.CACHE_TTL + 1]):
         # First lookup: cache is empty, should call resolver and cache result
-        assert collector.resolve_hostname('1.2.3.4') == "host.local"
+        assert collector.resolve_hostname('1.2.3.4') == "host"
         # Second lookup: within TTL, should use cache (resolver NOT called again)
-        assert collector.resolve_hostname('1.2.3.4') == "host.local"
+        assert collector.resolve_hostname('1.2.3.4') == "host"
         assert mock_resolve.call_count == 1  # Only first call hit the resolver
         # Third lookup: after TTL, should call resolver again (cache expired)
-        assert collector.resolve_hostname('1.2.3.4') == "host.local"
+        assert collector.resolve_hostname('1.2.3.4') == "host"
         assert mock_resolve.call_count == 2  # Resolver called again after cache expiry

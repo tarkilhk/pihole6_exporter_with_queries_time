@@ -238,13 +238,14 @@ class PiholeCollector(Collector):
         return metrics
 
     def resolve_hostname(self, ip):
-        """Resolve an IP address to a hostname with caching."""
+        """Resolve an IP address to a hostname with caching. Returns only the short hostname."""
         now = time.time()
         cached = self.hostname_cache.get(ip)
         if cached and now - cached[1] < self.CACHE_TTL:
             return cached[0]
         try:
-            hostname = socket.gethostbyaddr(ip)[0]
+            fqdn = socket.gethostbyaddr(ip)[0]
+            hostname = fqdn.split('.')[0] if fqdn else ip
         except Exception:
             hostname = ip
         self.hostname_cache[ip] = (hostname, now)
