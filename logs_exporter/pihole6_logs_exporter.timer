@@ -13,14 +13,5 @@ RandomizedDelaySec=5
 # Persist across reboots
 Persistent=true
 
-[Service]
-Type=oneshot
-User=root
-Group=root
-# API token from environment file (if exists) or existing environment variable
-EnvironmentFile=-/etc/pihole6_exporter/pihole6_exporter.env
-ExecStartPre=/bin/bash -c 'if [ -f /opt/pihole6_exporter/venv/bin/python ]; then echo "Using virtual environment"; else echo "Using system Python"; fi'
-ExecStart=/opt/pihole6_exporter/venv/bin/python /usr/local/bin/pihole6_logs_exporter -H localhost -k ${PIHOLE_API_TOKEN} -u ${LOKI_URL} -i ${INITIAL_MINUTES} -l INFO
-
 [Install]
 WantedBy=timers.target 

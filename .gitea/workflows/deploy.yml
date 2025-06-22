@@ -27,6 +27,7 @@ jobs:
         cp metrics_exporter/pihole6_metrics_exporter.service deploy_files/
         # Logs exporter files
         cp logs_exporter/pihole6_logs_exporter.py deploy_files/
+        cp logs_exporter/pihole6_logs_exporter.service deploy_files/
         cp logs_exporter/pihole6_logs_exporter.timer deploy_files/
         cp requirements.txt deploy_files/
 
@@ -79,6 +80,7 @@ jobs:
           sudo install -m 644 /tmp/pihole6_exporter/pihole6_metrics_exporter.service /etc/systemd/system/
           # Logs exporter
           sudo install -m 755 /tmp/pihole6_exporter/pihole6_logs_exporter.py /usr/local/bin/pihole6_logs_exporter
+          sudo install -m 644 /tmp/pihole6_exporter/pihole6_logs_exporter.service /etc/systemd/system/
           sudo install -m 644 /tmp/pihole6_exporter/pihole6_logs_exporter.timer /etc/systemd/system/
 
     # ───────────────────────────────────────────────────────────────
