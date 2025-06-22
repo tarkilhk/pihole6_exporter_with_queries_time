@@ -239,12 +239,33 @@ class PiholeLogsExporter:
 
     def get_loki_url(self):
         """Generate the full Loki URL from the target."""
-        return f"{self.loki_target}/loki/api/v1/push"
+        # Validate that loki_target is provided and not empty
+        if not self.loki_target or self.loki_target.strip() == "":
+            raise ValueError("LOKI_URL environment variable is not set or is empty")
+        
+        # Check if the target is just a path (missing scheme and hostname)
+        if self.loki_target.startswith('/'):
+            raise ValueError(f"LOKI_URL is just a path '{self.loki_target}'. Please provide a complete URL with scheme and hostname (e.g., http://localhost:3100)")
+        
+        # Check if the target has a scheme
+        if not self.loki_target.startswith(('http://', 'https://')):
+            raise ValueError(f"LOKI_URL missing scheme '{self.loki_target}'. Please provide a complete URL with http:// or https://")
+        
+        return f"{self.loki_target.rstrip('/')}/loki/api/v1/push"
 
     def run(self):
         """Main execution logic."""
         logging.info("Starting Pi-hole log export run.")
         try:
+            # Validate Loki target before proceeding
+            try:
+                loki_url = self.get_loki_url()
+                logging.info(f"Loki target validated: {loki_url}")
+            except ValueError as e:
+                logging.error(f"Invalid Loki configuration: {e}")
+                logging.error("Please set LOKI_URL to a complete URL (e.g., http://localhost:3100) and restart the service.")
+                return
+            
             last_ts = self.read_last_timestamp()
             current_ts = int(time.time())
             
