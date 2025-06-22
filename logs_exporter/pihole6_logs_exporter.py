@@ -99,19 +99,19 @@ class PiholeLogsExporter:
             with open(self.state_file, 'r') as f:
                 content = f.read().strip()
                 if not content:
-                    ts = int(time.time()) - 3600
+                    ts = int(time.time()) - 1800
                     logging.info(f"State file {self.state_file} is empty. Starting from 1 hour ago (timestamp {ts}).")
                     return ts
                 timestamp = int(content)
                 logging.info(f"Read last timestamp from state file: {timestamp} ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))})")
                 return timestamp
         except FileNotFoundError:
-            ts = int(time.time()) - 3600
+            ts = int(time.time()) - 1800
             logging.info(f"State file not found at {self.state_file}. Starting from 1 hour ago (timestamp {ts}).")
             return ts
         except (ValueError, TypeError) as e:
             logging.error(f"Invalid timestamp in state file: {e}. Starting fresh.")
-            return int(time.time()) - 3600  # Start from 1 hour ago
+            return int(time.time()) - 1800  # Start from 30 minutes ago
 
     def write_last_timestamp(self, timestamp):
         """Writes the latest timestamp to the state file."""
