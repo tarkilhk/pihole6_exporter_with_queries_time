@@ -92,25 +92,22 @@ class TestLogsExporterStatic:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
     def test_no_state_file_starts_from_epoch(self):
-        """Test 1: No state file causes read_last_timestamp to return 0, fetching all entries."""
-        
+        """Test 1: No state file causes read_last_timestamp to return now-1h, fetching recent entries only."""
         # 1. Ensure state file doesn't exist
         assert not os.path.exists(self.state_file), "State file should not exist for this test"
 
-        # 2. Call read_last_timestamp and verify it returns 0
-        from_ts = self.exporter.read_last_timestamp()
-        assert from_ts == 0, "read_last_timestamp should return 0 for a missing state file"
+        # 2. Call read_last_timestamp and verify it returns now-1h
+        with patch('time.time', return_value=self.mock_now):
+            from_ts = self.exporter.read_last_timestamp()
+            assert from_ts == self.mock_now - 3600, f"read_last_timestamp should return now-1h for a missing state file, got {from_ts}"
 
         # 3. Now, test the fetch_queries integration with this timestamp
         with patch.object(self.exporter, 'get_api_call', side_effect=mock_get_api_call):
             with patch('time.time', return_value=self.mock_now):
                 until_ts = self.mock_now
                 result = self.exporter.fetch_queries(from_ts, until_ts)
-                
-                # We expect 52 entries because we're querying from 0 to 1750622400 (20:00:00)
-                # The static data has 51 entries between 19:50:00-20:00:00 + 1 old entry from 20 JUN 2025
-                assert len(result) == 52, f"Expected 52 queries when starting from epoch, but got {len(result)}"
-                
+                # We expect 51 entries because we're querying from 19:00:00 to 20:00:00 (1 hour)
+                assert len(result) == 51, f"Expected 51 queries when starting from now-1h, but got {len(result)}"
                 print(f"✅ Test 1 passed: No state file, read_last_timestamp returned {from_ts}, fetched {len(result)} queries.")
     
     def test_fetch_queries_with_state_file_returns_correct_count(self):

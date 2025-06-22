@@ -99,14 +99,16 @@ class PiholeLogsExporter:
             with open(self.state_file, 'r') as f:
                 content = f.read().strip()
                 if not content:
-                    logging.info(f"State file {self.state_file} is empty. Starting from beginning (timestamp 0).")
-                    return 0
+                    ts = int(time.time()) - 3600
+                    logging.info(f"State file {self.state_file} is empty. Starting from 1 hour ago (timestamp {ts}).")
+                    return ts
                 timestamp = int(content)
                 logging.info(f"Read last timestamp from state file: {timestamp} ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))})")
                 return timestamp
         except FileNotFoundError:
-            logging.info(f"State file not found at {self.state_file}. Starting from beginning (timestamp 0).")
-            return 0
+            ts = int(time.time()) - 3600
+            logging.info(f"State file not found at {self.state_file}. Starting from 1 hour ago (timestamp {ts}).")
+            return ts
         except (ValueError, TypeError) as e:
             logging.error(f"Invalid timestamp in state file: {e}. Starting fresh.")
             return int(time.time()) - 3600  # Start from 1 hour ago
@@ -217,119 +219,29 @@ class PiholeLogsExporter:
         return list(streams.values()), max_timestamp
 
     def send_to_loki(self, streams):
-        """Sends a batch of log streams to the Loki endpoint, splitting large payloads if needed."""
+        """Sends a batch of log streams to the Loki endpoint."""
         if not streams:
             logging.info("No new logs to send to Loki.")
             return
 
-        # Maximum payload size in bytes (4MB = 4 * 1024 * 1024)
-        MAX_PAYLOAD_SIZE = 4 * 1024 * 1024
-        
+        payload = {"streams": streams}
         headers = {"Content-Type": "application/json"}
         loki_url = self.get_loki_url()
         
-        total_log_count = sum(len(s['values']) for s in streams)
-        logging.info(f"Preparing to send {len(streams)} streams with {total_log_count} total log entries to Loki at {loki_url}")
+        logging.info(f"Sending {len(streams)} streams to Loki at {loki_url}")
+        log_count = sum(len(s['values']) for s in streams)
+        logging.info(f"Total log entries to send: {log_count}")
         
-        # Split streams into batches that fit within the size limit
-        batches = self._split_streams_into_batches(streams, MAX_PAYLOAD_SIZE)
-        
-        total_sent = 0
-        for i, batch in enumerate(batches, 1):
-            batch_log_count = sum(len(s['values']) for s in batch)
-            payload = {"streams": batch}
-            
-            # Estimate payload size
-            payload_json = json.dumps(payload)
-            payload_size = len(payload_json.encode('utf-8'))
-            
-            logging.info(f"Sending batch {i}/{len(batches)} with {len(batch)} streams and {batch_log_count} log entries (estimated size: {payload_size / 1024 / 1024:.2f}MB)")
-            
-            try:
-                response = requests.post(loki_url, data=payload_json, headers=headers, timeout=15)
-                response.raise_for_status()
-                total_sent += batch_log_count
-                logging.info(f"Successfully sent batch {i}/{len(batches)} with {batch_log_count} log entries to Loki.")
-            except requests.exceptions.RequestException as e:
-                logging.error(f"Failed to send batch {i}/{len(batches)} to Loki: {e}")
-                if hasattr(e, 'response') and e.response is not None:
-                    logging.error(f"Loki response status: {e.response.status_code}")
-                    logging.error(f"Loki response body: {e.response.text}")
-                raise
-        
-        logging.info(f"Successfully sent all {total_sent}/{total_log_count} log entries to Loki in {len(batches)} batches.")
-
-    def _split_streams_into_batches(self, streams, max_size_bytes):
-        """Split streams into batches that fit within the specified size limit."""
-        batches = []
-        current_batch = []
-        current_batch_size = 0
-        
-        for stream in streams:
-            # Estimate the size of this stream
-            stream_json = json.dumps({"streams": [stream]})
-            stream_size = len(stream_json.encode('utf-8'))
-            
-            # If adding this stream would exceed the limit, start a new batch
-            if current_batch and (current_batch_size + stream_size) > max_size_bytes:
-                batches.append(current_batch)
-                current_batch = [stream]
-                current_batch_size = stream_size
-            else:
-                current_batch.append(stream)
-                current_batch_size += stream_size
-        
-        # Add the last batch if it has content
-        if current_batch:
-            batches.append(current_batch)
-        
-        # If we have a single batch that's still too large, we need to split individual streams
-        if len(batches) == 1 and current_batch_size > max_size_bytes:
-            logging.warning(f"Single batch is too large ({current_batch_size / 1024 / 1024:.2f}MB), splitting individual streams")
-            return self._split_large_streams(streams, max_size_bytes)
-        
-        return batches
-
-    def _split_large_streams(self, streams, max_size_bytes):
-        """Split individual streams that are too large by breaking them into smaller chunks."""
-        batches = []
-        
-        for stream in streams:
-            stream_values = stream['values']
-            stream_labels = stream['stream']
-            
-            # If the stream itself is too large, split its values
-            stream_json = json.dumps({"streams": [stream]})
-            if len(stream_json.encode('utf-8')) <= max_size_bytes:
-                batches.append([stream])
-                continue
-            
-            # Split the stream's values into smaller chunks
-            chunk_size = len(stream_values) // 2  # Start with half
-            while chunk_size > 0:
-                for i in range(0, len(stream_values), chunk_size):
-                    chunk_values = stream_values[i:i + chunk_size]
-                    chunk_stream = {
-                        "stream": stream_labels,
-                        "values": chunk_values
-                    }
-                    
-                    chunk_json = json.dumps({"streams": [chunk_stream]})
-                    if len(chunk_json.encode('utf-8')) <= max_size_bytes:
-                        batches.append([chunk_stream])
-                        break
-                else:
-                    # If we couldn't fit any chunks, reduce chunk size
-                    chunk_size = chunk_size // 2
-                    if chunk_size == 0:
-                        logging.error(f"Unable to split stream with {len(stream_values)} values - individual log entries may be too large")
-                        # Try to send as-is and let it fail with a clear error
-                        batches.append([stream])
-                        break
-                    continue
-                break
-        
-        return batches
+        try:
+            response = requests.post(loki_url, data=json.dumps(payload), headers=headers, timeout=15)
+            response.raise_for_status()
+            logging.info(f"Successfully sent {log_count} log entries to Loki.")
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Failed to send logs to Loki: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                logging.error(f"Loki response status: {e.response.status_code}")
+                logging.error(f"Loki response body: {e.response.text}")
+            raise
 
     def get_loki_url(self):
         """Generate the full Loki URL from the target."""
