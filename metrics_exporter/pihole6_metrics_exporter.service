@@ -7,7 +7,7 @@ Type=simple
 User=root
 Group=root
 EnvironmentFile=-/etc/pihole6_exporter/pihole6_exporter.env
-ExecStart=/opt/pihole6_exporter/venv/bin/python /usr/local/bin/pihole6_metrics_exporter -H localhost -k ${PIHOLE_API_TOKEN} -l INFO
+ExecStart=/opt/pihole6_exporter/venv/bin/python /usr/local/bin/pihole6_metrics_exporter -H localhost -k ${PIHOLE_API_TOKEN} -l INFO --log-file /var/log/pihole6_exporter/pihole_metrics_exporter.log
 Restart=always
 RestartSec=10
 

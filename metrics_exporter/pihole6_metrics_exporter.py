@@ -6,11 +6,13 @@ import requests
 import urllib3
 import logging
 import argparse
+import json
 import psutil
 from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, REGISTRY
 from prometheus_client.registry import Collector
 from prometheus_client import start_http_server
 import socket
+from logging.handlers import RotatingFileHandler
 
 class PiholeMetricsCollector(Collector):
 
@@ -408,9 +410,11 @@ class PiholeMetricsCollector(Collector):
 
 
     def collect(self):
-        logging.info("beginning scrape...")
-
+        """Collect metrics from Pi-hole API."""
         try:
+            logging.info("Starting metrics collection")
+            
+            # Get basic stats
             reply = self.get_api_call("stats/summary")
             
             if not isinstance(reply, dict):
@@ -624,7 +628,49 @@ class PiholeMetricsCollector(Collector):
         except Exception as e:
             logging.error(f"Error during collection: {e}")
             logging.error("Scrape aborted")
+        finally:
+            # Always logout to free up API sessions
+            logging.info("Logging out from Pi-hole API session")
+            self.logout()
 
+
+def setup_logging(log_level, log_file=None):
+    """Setup logging with both console and file handlers."""
+    # Create formatter
+    formatter = logging.Formatter('time="%(asctime)s" level="%(levelname)s" message="%(message)s"')
+    
+    # Create logger
+    logger = logging.getLogger()
+    logger.setLevel(getattr(logging, log_level.upper()))
+    
+    # Clear any existing handlers
+    logger.handlers.clear()
+    
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+    
+    # File handler (if specified)
+    if log_file:
+        # Ensure log directory exists
+        log_dir = os.path.dirname(log_file)
+        if log_dir and not os.path.exists(log_dir):
+            try:
+                os.makedirs(log_dir, exist_ok=True)
+                logging.info(f"Created log directory: {log_dir}")
+            except Exception as e:
+                logging.error(f"Failed to create log directory {log_dir}: {e}")
+        
+        # Create rotating file handler
+        file_handler = RotatingFileHandler(
+            log_file, 
+            maxBytes=10*1024*1024,  # 10MB
+            backupCount=5
+        )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        logging.info(f"Logging to file: {log_file}")
 
 if __name__ == '__main__':
     
@@ -634,12 +680,13 @@ if __name__ == '__main__':
     parser.add_argument("-p", "--port", dest="port", type=int, required=False, help="port to expose for scraping (default 9666)", default=9666)
     parser.add_argument("-k", "--key", dest="key", type=str, required=False, help="authentication token (if required)", default=None)
     parser.add_argument("-l", "--log-level", dest="log_level", type=str, required=False, help="logging level (DEBUG, INFO, WARNING, ERROR)", default="INFO")
+    parser.add_argument("--log-file", dest="log_file", type=str, required=False, default="/var/log/pihole6_exporter/pihole_metrics_exporter.log",
+                        help="Path to the log file for detailed logging.")
 
     args = parser.parse_args()
 
-    # Set logging level based on argument
-    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
-    logging.basicConfig(format='level="%(levelname)s" message="%(message)s"', level=log_level)
+    # Setup logging
+    setup_logging(args.log_level, args.log_file)
 
     start_http_server(args.port)
     logging.info("Exporter HTTP endpoint started")

@@ -274,6 +274,10 @@ class PiholeLogsExporter:
 
         except Exception as e:
             logging.error(f"An unexpected error occurred during the run: {e}", exc_info=True)
+        finally:
+            # Always logout to free up API sessions
+            logging.info("Logging out from Pi-hole API session")
+            self.logout()
 
 def setup_logging(log_level, log_file=None):
     """Setup logging with both console and file handlers."""
@@ -337,6 +341,7 @@ if __name__ == '__main__':
     # Setup logging
     setup_logging(args.log_level, args.log_file)
 
+    exporter = None
     try:
         exporter = PiholeLogsExporter(
             host=args.host,
@@ -347,4 +352,9 @@ if __name__ == '__main__':
         exporter.run()
     except Exception as e:
         logging.critical(f"Exporter failed to initialize or run: {e}", exc_info=True)
-        exit(1) 
+        exit(1)
+    finally:
+        # Ensure logout happens even if initialization fails
+        if exporter:
+            logging.info("Ensuring logout from Pi-hole API session")
+            exporter.logout() 
