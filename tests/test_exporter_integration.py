@@ -6,6 +6,7 @@ import importlib.util
 import sys
 from pathlib import Path
 import os
+import subprocess
 
 # Dynamically import the script as a module
 script_path = Path(__file__).parent.parent / "pihole6_exporter.py"
@@ -212,6 +213,7 @@ def test_system_metrics_present():
             'system_disk_usage_bytes',
             'system_network_receive_bytes',
             'system_sdcard_wear_percent',
+            'system_temperature_celsius',
         ]
         if hasattr(os, "getloadavg"):
             expected.append('system_load1')
@@ -265,3 +267,35 @@ def test_hostname_resolution_cache_hit_and_miss():
         # Third lookup: after TTL, should call resolver again (cache expired)
         assert collector.resolve_hostname('1.2.3.4') == "host"
         assert mock_resolve.call_count == 2  # Resolver called again after cache expiry
+
+def test_temperature_monitoring():
+    """Test Raspberry Pi temperature monitoring functionality."""
+    collector = PiholeCollector()
+    
+    # Test successful temperature reading
+    with patch('subprocess.run') as mock_run:
+        mock_run.return_value.returncode = 0
+        mock_run.return_value.stdout = "temp=45.1'C\n"
+        
+        temp = collector._get_raspberry_pi_temperature()
+        assert temp == 45.1
+        mock_run.assert_called_once_with(['vcgencmd', 'measure_temp'], 
+                                        capture_output=True, text=True, timeout=5)
+    
+    # Test failed temperature reading (vcgencmd not found)
+    with patch('subprocess.run', side_effect=FileNotFoundError):
+        temp = collector._get_raspberry_pi_temperature()
+        assert temp is None
+    
+    # Test timeout
+    with patch('subprocess.run', side_effect=subprocess.TimeoutExpired(['vcgencmd', 'measure_temp'], 5)):
+        temp = collector._get_raspberry_pi_temperature()
+        assert temp is None
+    
+    # Test unexpected output format
+    with patch('subprocess.run') as mock_run:
+        mock_run.return_value.returncode = 0
+        mock_run.return_value.stdout = "unexpected_format\n"
+        
+        temp = collector._get_raspberry_pi_temperature()
+        assert temp is None

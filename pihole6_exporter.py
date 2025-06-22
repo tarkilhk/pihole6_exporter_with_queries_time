@@ -158,6 +158,30 @@ class PiholeCollector(Collector):
             logging.debug(f"SD card life_time not available: {e}")
         return 0
 
+    def _get_raspberry_pi_temperature(self):
+        """Return Raspberry Pi CPU temperature in Celsius or None if unavailable."""
+        try:
+            import subprocess
+            result = subprocess.run(['vcgencmd', 'measure_temp'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                # Parse output like "temp=45.1'C"
+                temp_str = result.stdout.strip()
+                if temp_str.startswith('temp=') and temp_str.endswith("'C"):
+                    temp_value = float(temp_str[5:-2])  # Extract the numeric part
+                    return temp_value
+                else:
+                    logging.debug(f"Unexpected temperature output format: {temp_str}")
+            else:
+                logging.debug(f"vcgencmd failed with return code {result.returncode}: {result.stderr}")
+        except subprocess.TimeoutExpired:
+            logging.debug("vcgencmd measure_temp timed out")
+        except FileNotFoundError:
+            logging.debug("vcgencmd not found - not running on Raspberry Pi")
+        except Exception as e:
+            logging.debug(f"Error getting temperature: {e}")
+        return None
+
     def _collect_system_metrics(self):
         mem = psutil.virtual_memory()
         metrics = [
@@ -234,6 +258,20 @@ class PiholeCollector(Collector):
                 value=wear,
             )
         )
+
+        # Raspberry Pi temperature
+        temp = self._get_raspberry_pi_temperature()
+        if temp is not None:
+            metrics.append(
+                GaugeMetricFamily(
+                    "system_temperature_celsius",
+                    "Raspberry Pi CPU temperature in Celsius",
+                    value=temp,
+                )
+            )
+            logging.debug(f"Temperature: {temp}°C")
+        else:
+            logging.debug("Temperature not available")
 
         return metrics
 

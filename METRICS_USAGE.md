@@ -211,20 +211,83 @@ pihole_dns_timeouts_1m / pihole_dns_queries_processed_1m * 100
 # Average DNS latency over 5 minutes (all queries)
 rate(pihole_dns_latency_seconds_1m_sum[5m]) / rate(pihole_dns_latency_seconds_1m_count[5m])
 
-# Average DNS latency for cached queries only
-rate(pihole_dns_latency_seconds_1m_sum{status="cache"}[5m]) / rate(pihole_dns_latency_seconds_1m_count{status="cache"}[5m])
+# Average latency by status
+rate(pihole_dns_latency_seconds_1m_sum[5m]) / rate(pihole_dns_latency_seconds_1m_count[5m]) * 1000
 
-# Average DNS latency for forwarded queries only  
-rate(pihole_dns_latency_seconds_1m_sum{status="forwarded"}[5m]) / rate(pihole_dns_latency_seconds_1m_count{status="forwarded"}[5m])
+# Cache vs forwarded latency comparison
+rate(pihole_dns_latency_seconds_1m_sum{status="cache"}[5m]) / rate(pihole_dns_latency_seconds_1m_count{status="cache"}[5m]) * 1000
+rate(pihole_dns_latency_seconds_1m_sum{status="forwarded"}[5m]) / rate(pihole_dns_latency_seconds_1m_count{status="forwarded"}[5m]) * 1000
 
-# 95th percentile latency (all queries)
-histogram_quantile(0.95, rate(pihole_dns_latency_seconds_1m_bucket[5m]))
+# Latency percentiles by status
+histogram_quantile(0.50, rate(pihole_dns_latency_seconds_1m_bucket{status="forwarded"}[5m])) * 1000
+histogram_quantile(0.95, rate(pihole_dns_latency_seconds_1m_bucket{status="forwarded"}[5m])) * 1000
+```
 
-# 95th percentile latency for forwarded queries only
-histogram_quantile(0.95, rate(pihole_dns_latency_seconds_1m_bucket{status="forwarded"}[5m]))
+### System Metrics
 
-# Percentage of queries under 10ms
-rate(pihole_dns_latency_seconds_1m_bucket{le="0.01"}[5m]) / rate(pihole_dns_latency_seconds_1m_count[5m]) * 100
+These metrics provide Raspberry Pi system information for comprehensive monitoring:
+
+#### CPU and Memory Usage
+**Metrics:**
+- `system_cpu_usage_percent` - CPU utilization percentage
+- `system_memory_usage_bytes` - Used RAM in bytes
+- `system_memory_total_bytes` - Total RAM in bytes
+- `system_load1` / `system_load5` / `system_load15` - Load averages
+
+**PromQL Examples:**
+```promql
+# CPU usage percentage
+system_cpu_usage_percent
+
+# Memory usage percentage
+system_memory_usage_bytes / system_memory_total_bytes * 100
+
+# Load average
+system_load1
+```
+
+#### Disk Usage
+**Metrics:**
+- `system_disk_usage_bytes` - Used root filesystem space
+- `system_disk_total_bytes` - Total root filesystem space
+- `system_sdcard_wear_percent` - Estimated SD card wear level
+
+**PromQL Examples:**
+```promql
+# Disk usage percentage
+system_disk_usage_bytes / system_disk_total_bytes * 100
+
+# SD card wear level
+system_sdcard_wear_percent
+```
+
+#### Network Usage
+**Metrics:**
+- `system_network_receive_bytes` - Bytes received on all interfaces (Counter)
+- `system_network_transmit_bytes` - Bytes sent on all interfaces (Counter)
+
+**PromQL Examples:**
+```promql
+# Network receive rate (bytes per second)
+rate(system_network_receive_bytes[5m])
+
+# Network transmit rate (bytes per second)
+rate(system_network_transmit_bytes[5m])
+
+# Total network usage rate
+rate(system_network_receive_bytes[5m]) + rate(system_network_transmit_bytes[5m])
+```
+
+#### Temperature Monitoring
+**Metric:** `system_temperature_celsius`
+- **Type:** Gauge
+- **Labels:** None
+- **Description:** Raspberry Pi CPU temperature in Celsius
+
+**PromQL Examples:**
+```promql
+# Current temperature
+system_temperature_celsius
 
 # Convert to milliseconds for display
 rate(pihole_dns_latency_seconds_1m_sum[5m]) / rate(pihole_dns_latency_seconds_1m_count[5m]) * 1000
@@ -233,6 +296,13 @@ rate(pihole_dns_latency_seconds_1m_sum[5m]) / rate(pihole_dns_latency_seconds_1m
 rate(pihole_dns_latency_seconds_1m_sum{status="cache"}[5m]) / rate(pihole_dns_latency_seconds_1m_count{status="cache"}[5m]) * 1000
 rate(pihole_dns_latency_seconds_1m_sum{status="forwarded"}[5m]) / rate(pihole_dns_latency_seconds_1m_count{status="forwarded"}[5m]) * 1000
 ```
+
+**Temperature Thresholds:**
+- **Normal:** < 60°C (140°F)
+- **Warning:** 60-70°C (140-158°F)
+- **Critical:** > 70°C (158°F)
+
+**Note:** Temperature monitoring is only available on Raspberry Pi devices. On other systems, this metric will not be exported.
 
 ## Grafana Dashboard Examples
 
@@ -424,6 +494,24 @@ groups:
     annotations:
       summary: "Pi-hole exporter is down"
       description: "Pi-hole exporter has been down for more than 1 minute"
+
+  - alert: PiHoleTemperatureHigh
+    expr: system_temperature_celsius > 70
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Pi-hole Raspberry Pi temperature is critical"
+      description: "CPU temperature is {{ $value | humanize }}°C ({{ $value * 9/5 + 32 | humanize }}°F)"
+
+  - alert: PiHoleTemperatureWarning
+    expr: system_temperature_celsius > 60
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Pi-hole Raspberry Pi temperature is high"
+      description: "CPU temperature is {{ $value | humanize }}°C ({{ $value * 9/5 + 32 | humanize }}°F)"
 ```
 
 ## Benefits of This Approach

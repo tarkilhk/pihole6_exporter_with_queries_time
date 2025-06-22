@@ -117,6 +117,7 @@ These metrics expose Raspberry Pi system information for convenience:
 | `system_network_receive_bytes` | Counter | Bytes received on all interfaces |
 | `system_network_transmit_bytes` | Counter | Bytes sent on all interfaces |
 | `system_sdcard_wear_percent` | Gauge | Estimated SD card wear level |
+| `system_temperature_celsius` | Gauge | Raspberry Pi CPU temperature in Celsius |
 
 ### Using the Metrics
 
