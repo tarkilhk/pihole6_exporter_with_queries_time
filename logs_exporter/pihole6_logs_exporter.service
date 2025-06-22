@@ -9,16 +9,7 @@ User=root
 Group=root
 # API token from environment file (if exists) or existing environment variable
 EnvironmentFile=-/etc/pihole6_exporter/pihole6_exporter.env
-# Logs exporter specific environment variables
-Environment=LOKI_URL=http://localhost:3100/loki/api/v1/push
-Environment=STATE_FILE=/var/tmp/pihole_logs_exporter.state
-ExecStartPre=/bin/bash -c 'if [ -f /opt/pihole6_exporter/venv/bin/python ]; then echo "Using virtual environment"; else echo "Using system Python"; fi'
-ExecStart=/bin/bash -c 'if [ -f /opt/pihole6_exporter/venv/bin/python ]; then /opt/pihole6_exporter/venv/bin/python /usr/local/bin/pihole6_logs_exporter -H localhost -k ${PIHOLE_API_TOKEN} -u ${LOKI_URL} -s ${STATE_FILE} -l INFO; else /usr/bin/python3 /usr/local/bin/pihole6_logs_exporter -H localhost -k ${PIHOLE_API_TOKEN} -u ${LOKI_URL} -s ${STATE_FILE} -l INFO; fi'
-# Create state file directory if it doesn't exist
-ExecStartPre=/bin/mkdir -p /var/tmp
-# Set proper permissions for state file
-ExecStartPre=/bin/touch ${STATE_FILE}
-ExecStartPre=/bin/chmod 644 ${STATE_FILE}
+ExecStart=/opt/pihole6_exporter/venv/bin/python /usr/local/bin/pihole6_logs_exporter -H localhost -k ${PIHOLE_API_TOKEN} -u ${LOKI_URL} -l INFO
 
 [Install]
 WantedBy=multi-user.target 
