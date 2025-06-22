@@ -80,10 +80,9 @@ class TestLogsExporterStatic:
         with patch.object(PiholeLogsExporter, 'get_sid', return_value="mock-session-id"):
             self.exporter = PiholeLogsExporter(
                 host="localhost",
-                key="mock-key",  # Use a mock key to avoid env var lookup
-                loki_target=loki_target,
-                state_file=self.state_file,
-                initial_history_minutes=5
+                key="test-key",
+                loki_target="http://test-loki:3100/loki/api/v1/push",
+                state_file=self.state_file
             )
     
     def teardown_method(self):

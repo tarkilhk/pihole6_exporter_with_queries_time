@@ -32,8 +32,7 @@ def test_get_api_call_matches_static_structure():
         host=pihole_host,
         key=api_token,
         loki_target=os.getenv("LOKI_TARGET"),
-        state_file="/tmp/irrelevant",
-        initial_history_minutes=5
+        state_file="/tmp/irrelevant"
     )
     try:
         data = exporter.get_api_call("queries")
@@ -80,8 +79,7 @@ def test_send_to_loki_integration():
         host=None,
         key=None,
         loki_target=loki_target,
-        state_file="/tmp/irrelevant",
-        initial_history_minutes=5
+        state_file="/tmp/irrelevant"
     )
     
     # Use the current time in nanoseconds for the log entry
@@ -164,8 +162,7 @@ def test_end_to_end_pihole_to_loki():
         host=pihole_host,
         key=api_token,
         loki_target=loki_target,
-        state_file="/tmp/irrelevant",
-        initial_history_minutes=1
+        state_file="/tmp/irrelevant"
     )
 
     # --- 2. Fetch real data from Pi-hole ---

@@ -28,10 +28,10 @@ The logs exporter fetches Pi-hole query logs and sends them to a Loki-compatible
 
 The timer uses environment variables that can be set in `etc/pihole6_exporter/pihole6_exporter.env`:
 
-- `PIHOLE_API_TOKEN` - Pi-hole API token
-- `LOKI_URL` - Loki endpoint URL (default: http://localhost:3100/loki/api/v1/push)
-- `STATE_FILE` - State file location (default: /var/tmp/pihole_logs_exporter.state)
-- `INITIAL_MINUTES` - Initial history fetch in minutes (default: 5)
+- `PIHOLE_HOST` - Pi-hole server hostname or IP address (default: localhost)
+- `PIHOLE_API_TOKEN` - Pi-hole API token for authentication
+- `LOKI_TARGET` - Loki server URL (e.g., http://localhost:3100/loki/api/v1/push)
+- `STATE_FILE` - Path to state file for tracking last processed timestamp (default: /var/tmp/pihole_logs_exporter.state)
 
 ### Manual Execution
 

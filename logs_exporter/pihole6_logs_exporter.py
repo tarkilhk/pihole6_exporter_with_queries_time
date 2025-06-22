@@ -15,21 +15,18 @@ class PiholeLogsExporter:
     """
     CACHE_TTL = 3600
 
-    def __init__(self, host, key, loki_target, state_file, initial_history_minutes=5):
+    def __init__(self, host, key, loki_target, state_file):
         self.host = host
+        self.key = key
         self.loki_target = loki_target
         self.state_file = state_file
-        self.initial_history_minutes = initial_history_minutes
         self.using_auth = False
+        self.sid = None
         self.hostname_cache = {}
         
-        # Disable if you've actually got a good cert set up.
+        # Disable SSL warnings for self-signed certificates
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-        # Try to get API key from environment variable if not provided
-        if key is None:
-            key = os.getenv('PIHOLE_API_TOKEN')
-            
         if key is not None and host is not None:
             self.using_auth = True
             self.sid = self.get_sid(key)
@@ -270,8 +267,6 @@ if __name__ == '__main__':
                         help="URL of the Loki/Alloy push API endpoint (e.g., http://localhost:3100).")
     parser.add_argument("-s", "--state-file", dest="state_file", type=str, required=False, default="/var/tmp/pihole_logs_exporter.state",
                         help="Path to the state file for storing the last timestamp.")
-    parser.add_argument("-i", "--initial-minutes", dest="initial_minutes", type=int, required=False, default=5,
-                        help="On first run, how many minutes of history to fetch.")
     parser.add_argument("-l", "--log-level", dest="log_level", type=str, required=False, default="INFO",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                         help="Set the logging level.")
@@ -287,8 +282,7 @@ if __name__ == '__main__':
             host=args.host,
             key=args.key,
             loki_target=args.loki_target,
-            state_file=args.state_file,
-            initial_history_minutes=args.initial_minutes
+            state_file=args.state_file
         )
         exporter.run()
     except Exception as e:
