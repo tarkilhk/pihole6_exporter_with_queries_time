@@ -187,17 +187,17 @@ class PiholeCollector(Collector):
         metrics = [
             GaugeMetricFamily(
                 "system_memory_usage_bytes",
-                "Used memory in bytes",
+                "Pihole used memory in bytes",
                 value=mem.used,
             ),
             GaugeMetricFamily(
                 "system_memory_total_bytes",
-                "Total memory in bytes",
+                "Pihole total memory in bytes",
                 value=mem.total,
             ),
             GaugeMetricFamily(
                 "system_cpu_usage_percent",
-                "CPU usage percentage",
+                "Pihole CPU usage percentage",
                 value=psutil.cpu_percent(interval=None),
             ),
         ]
@@ -223,12 +223,12 @@ class PiholeCollector(Collector):
             [
                 GaugeMetricFamily(
                     "system_disk_usage_bytes",
-                    "Used disk space on root filesystem in bytes",
+                    "Pihole used disk space on root filesystem in bytes",
                     value=disk.used,
                 ),
                 GaugeMetricFamily(
                     "system_disk_total_bytes",
-                    "Total disk space on root filesystem in bytes",
+                    "Pihole total disk space on root filesystem in bytes",
                     value=disk.total,
                 ),
             ]
@@ -239,12 +239,12 @@ class PiholeCollector(Collector):
             [
                 CounterMetricFamily(
                     "system_network_receive_bytes",
-                    "Total bytes received on all interfaces",
+                    "Pihole total bytes received on all interfaces",
                     value=net.bytes_recv,
                 ),
                 CounterMetricFamily(
                     "system_network_transmit_bytes",
-                    "Total bytes transmitted on all interfaces",
+                    "Pihole total bytes transmitted on all interfaces",
                     value=net.bytes_sent,
                 ),
             ]
@@ -254,7 +254,7 @@ class PiholeCollector(Collector):
         metrics.append(
             GaugeMetricFamily(
                 "system_sdcard_wear_percent",
-                "Estimated SD card wear level (0-100). 0 if unknown",
+                "Pihole estimated SD card wear level (0-100). 0 if unknown",
                 value=wear,
             )
         )
@@ -265,7 +265,7 @@ class PiholeCollector(Collector):
             metrics.append(
                 GaugeMetricFamily(
                     "system_temperature_celsius",
-                    "Raspberry Pi CPU temperature in Celsius",
+                    "Pihole CPU temperature in Celsius",
                     value=temp,
                 )
             )
