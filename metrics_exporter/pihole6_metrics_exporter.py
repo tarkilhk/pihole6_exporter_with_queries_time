@@ -628,10 +628,6 @@ class PiholeMetricsCollector(Collector):
         except Exception as e:
             logging.error(f"Error during collection: {e}")
             logging.error("Scrape aborted")
-        finally:
-            # Always logout to free up API sessions
-            logging.info("Logging out from Pi-hole API session")
-            self.logout()
 
 
 def setup_logging(log_level, log_file=None):
