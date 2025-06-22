@@ -9,15 +9,15 @@ import argparse
 import json
 import socket
 
-class PiholeLogExporter:
+class PiholeLogsExporter:
     """
     Exports Pi-hole query logs to a Loki-compatible endpoint (like Grafana Alloy).
     """
     CACHE_TTL = 3600
 
-    def __init__(self, host, key, loki_url, state_file, initial_history_minutes=5):
+    def __init__(self, host, key, loki_target, state_file, initial_history_minutes=5):
         self.host = host
-        self.loki_url = loki_url
+        self.loki_target = loki_target
         self.state_file = state_file
         self.initial_history_minutes = initial_history_minutes
         self.using_auth = False
@@ -30,19 +30,11 @@ class PiholeLogExporter:
         if key is None:
             key = os.getenv('PIHOLE_API_TOKEN')
             
-        # Try to get API key from file if still not available
-        if key is None and os.path.exists('/etc/pihole6_exporter/api_token'):
-            try:
-                with open('/etc/pihole6_exporter/api_token', 'r') as f:
-                    key = f.read().strip()
-            except Exception as e:
-                logging.error(f"Failed to read API token from file: {e}")
-
-        if key is not None:
+        if key is not None and host is not None:
             self.using_auth = True
             self.sid = self.get_sid(key)
         else:
-            logging.warning("No API token provided. Some information may not be available.")
+            logging.warning("No host or API token provided. Some information may not be available.")
 
     def get_sid(self, key):
         """Authenticates with the Pi-hole API and returns a session ID."""
@@ -58,6 +50,25 @@ class PiholeLogExporter:
         except requests.exceptions.RequestException as e:
             logging.error(f"Failed to authenticate with Pi-hole API: {e}")
             raise
+
+    def logout(self):
+        """Logs out from the Pi-hole API session."""
+        if not self.using_auth or not hasattr(self, 'sid'):
+            return
+        
+        logout_url = f"https://{self.host}:443/api/logout"
+        headers = {"accept": "application/json", "sid": self.sid}
+        
+        try:
+            req = requests.post(logout_url, verify=False, headers=headers, timeout=10)
+            req.raise_for_status()
+            logging.info("Successfully logged out from Pi-hole API session.")
+        except requests.exceptions.RequestException as e:
+            logging.warning(f"Failed to log out from Pi-hole API: {e}")
+        finally:
+            # Clear the session ID regardless of logout success
+            self.sid = None
+            self.using_auth = False
 
     def get_api_call(self, api_path):
         """Makes a GET request to the Pi-hole API."""
@@ -85,8 +96,8 @@ class PiholeLogExporter:
             with open(self.state_file, 'r') as f:
                 return int(f.read().strip())
         except FileNotFoundError:
-            logging.info(f"State file not found at {self.state_file}. Starting from {self.initial_history_minutes} minutes ago.")
-            return int(time.time()) - (self.initial_history_minutes * 60)
+            logging.info(f"State file not found at {self.state_file}. Starting from beginning (timestamp 0).")
+            return 0
         except (ValueError, TypeError) as e:
             logging.error(f"Invalid timestamp in state file: {e}. Starting fresh.")
             return int(time.time()) - (self.initial_history_minutes * 60)
@@ -112,6 +123,20 @@ class PiholeLogExporter:
             hostname = ip
         self.hostname_cache[ip] = (hostname, now)
         return hostname
+
+    def _flatten_dict(self, d: dict, parent_key: str = '', sep: str = '_') -> dict:
+        """
+        Flattens a nested dictionary.
+        Example: {'a': {'b': 1}} -> {'a_b': 1}
+        """
+        items = []
+        for k, v in d.items():
+            new_key = parent_key + sep + k if parent_key else k
+            if isinstance(v, dict):
+                items.extend(self._flatten_dict(v, new_key, sep=sep).items())
+            else:
+                items.append((new_key, v))
+        return dict(items)
 
     def fetch_queries(self, from_ts, until_ts):
         """Fetches queries from the Pi-hole API within a given time range."""
@@ -148,9 +173,14 @@ class PiholeLogExporter:
             client_ip = q.get('client', {}).get('ip', 'unknown')
             client_name = self.resolve_hostname(client_ip)
 
+            # Update the original query dict with the short hostname so it's reflected in the flattened log line.
+            if 'client' in q and isinstance(q['client'], dict):
+                q['client']['name'] = client_name
+
             # Create stream labels for Loki.
             stream_labels = {
-                "job": "pihole_query_log",
+                "job": "pihole_logs_exporter",
+                "service": "pihole_query_log",
                 "host": self.host,
                 "client_ip": client_ip,
                 "client_name": client_name,
@@ -167,7 +197,8 @@ class PiholeLogExporter:
                     "values": []
                 }
             
-            log_line = json.dumps(q)
+            flat_q = self._flatten_dict(q)
+            log_line = json.dumps(flat_q)
             streams[labels_tuple]["values"].append([ts_ns, log_line])
         
         return list(streams.values()), max_timestamp
@@ -182,13 +213,17 @@ class PiholeLogExporter:
         headers = {"Content-Type": "application/json"}
         
         try:
-            response = requests.post(self.loki_url, data=json.dumps(payload), headers=headers, timeout=15)
+            response = requests.post(self.get_loki_url(), data=json.dumps(payload), headers=headers, timeout=15)
             response.raise_for_status()
             log_count = sum(len(s['values']) for s in streams)
             logging.info(f"Successfully sent {log_count} log entries to Loki.")
         except requests.exceptions.RequestException as e:
             logging.error(f"Failed to send logs to Loki: {e}")
             raise
+
+    def get_loki_url(self):
+        """Generate the full Loki URL from the target."""
+        return f"{self.loki_target}/loki/api/v1/push"
 
     def run(self):
         """Main execution logic."""
@@ -227,13 +262,13 @@ if __name__ == '__main__':
         description="Pi-hole v6 Log Exporter for Loki.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("-H", "--host", dest="host", type=str, required=False, default="localhost",
+    parser.add_argument("-H", "--host", dest="host", type=str, required=False, default=os.getenv("PIHOLE_HOST", "localhost"),
                         help="Hostname or IP address of the Pi-hole instance.")
     parser.add_argument("-k", "--key", dest="key", type=str, required=False, default=None,
                         help="Pi-hole API token. Can also be set via PIHOLE_API_TOKEN env var.")
-    parser.add_argument("-u", "--loki-url", dest="loki_url", type=str, required=True,
-                        help="URL of the Loki/Alloy push API endpoint (e.g., http://localhost:3100/loki/api/v1/push).")
-    parser.add_argument("-s", "--state-file", dest="state_file", type=str, required=False, default="/var/tmp/pihole_log_exporter.state",
+    parser.add_argument("-u", "--loki-target", dest="loki_target", type=str, required=True,
+                        help="URL of the Loki/Alloy push API endpoint (e.g., http://localhost:3100).")
+    parser.add_argument("-s", "--state-file", dest="state_file", type=str, required=False, default="/var/tmp/pihole_logs_exporter.state",
                         help="Path to the state file for storing the last timestamp.")
     parser.add_argument("-i", "--initial-minutes", dest="initial_minutes", type=int, required=False, default=5,
                         help="On first run, how many minutes of history to fetch.")
@@ -248,10 +283,10 @@ if __name__ == '__main__':
     logging.basicConfig(format='time="%(asctime)s" level="%(levelname)s" message="%(message)s"', level=log_level)
 
     try:
-        exporter = PiholeLogExporter(
+        exporter = PiholeLogsExporter(
             host=args.host,
             key=args.key,
-            loki_url=args.loki_url,
+            loki_target=args.loki_target,
             state_file=args.state_file,
             initial_history_minutes=args.initial_minutes
         )

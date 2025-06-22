@@ -1,6 +1,0 @@
-/var/log/pihole_api/api.log {
-    daily
-    missingok
-    create
-    rotate 3
-}

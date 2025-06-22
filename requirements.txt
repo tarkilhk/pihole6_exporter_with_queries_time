@@ -1,8 +1,9 @@
-# Core dependencies for pihole6_exporter
+# Core dependencies for pihole6_metrics_exporter
 prometheus-client>=0.22.1
 requests>=2.31.0
 urllib3>=2.0.7
 psutil>=7.0.0
+python-dotenv>=1.0.0
 
 # Testing dependencies
 pytest>=7.4.0

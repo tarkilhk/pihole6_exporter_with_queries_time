@@ -12,30 +12,26 @@ from prometheus_client.registry import Collector
 from prometheus_client import start_http_server
 import socket
 
-class PiholeCollector(Collector):
+class PiholeMetricsCollector(Collector):
 
     CACHE_TTL = 3600
 
 
-    def __init__(self, host="localhost", key=None):
+    def __init__(self, host=None, key=None):
 
         self.using_auth = False
         # Disable if you've actually got a good cert set up.
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+        # Try to get host from environment variable if not provided
+        if host is None:
+            host = os.getenv('PIHOLE_HOST', 'localhost')
+        
         self.host = host
 
         # Try to get API key from environment variable if not provided
         if key is None:
             key = os.getenv('PIHOLE_API_TOKEN')
-            
-        # Try to get API key from file if still not available
-        if key is None and os.path.exists('/etc/pihole6_exporter/api_token'):
-            try:
-                with open('/etc/pihole6_exporter/api_token', 'r') as f:
-                    key = f.read().strip()
-            except Exception as e:
-                logging.error(f"Failed to read API token from file: {e}")
 
         if key is not None:
             self.using_auth = True
@@ -73,6 +69,24 @@ class PiholeCollector(Collector):
         reply = req.json()
         return reply['session']['sid']
 
+    def logout(self):
+        """Logs out from the Pi-hole API session."""
+        if not self.using_auth or not hasattr(self, 'sid'):
+            return
+        
+        logout_url = f"https://{self.host}:443/api/logout"
+        headers = {"accept": "application/json", "sid": self.sid}
+        
+        try:
+            req = requests.post(logout_url, verify=False, headers=headers, timeout=10)
+            req.raise_for_status()
+            logging.info("Successfully logged out from Pi-hole API session.")
+        except requests.exceptions.RequestException as e:
+            logging.warning(f"Failed to log out from Pi-hole API: {e}")
+        finally:
+            # Clear the session ID regardless of logout success
+            self.sid = None
+            self.using_auth = False
 
     def get_api_call(self, api_path):
         url = "https://" + self.host + ":443/api/" + api_path
@@ -630,7 +644,7 @@ if __name__ == '__main__':
     start_http_server(args.port)
     logging.info("Exporter HTTP endpoint started")
 
-    REGISTRY.register(PiholeCollector(args.host, args.key))
+    REGISTRY.register(PiholeMetricsCollector(args.host, args.key))
     logging.info("Ready to collect data")
     while True:
         time.sleep(1)

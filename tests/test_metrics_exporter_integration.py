@@ -1,21 +1,31 @@
-import pytest
-from unittest.mock import patch
-import socket
-from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily
-import importlib.util
+#!/usr/bin/env python3
+
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import os
+from dotenv import load_dotenv
+import pytest
+import time
+import json
+import socket
+from unittest.mock import patch, MagicMock
+from metrics_exporter.pihole6_metrics_exporter import PiholeMetricsCollector
+from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily
+import importlib.util
 import subprocess
 
-# Dynamically import the script as a module
-script_path = Path(__file__).parent.parent / "pihole6_exporter.py"
-spec = importlib.util.spec_from_file_location("pihole6_exporter", script_path)
-pihole6_exporter = importlib.util.module_from_spec(spec)
-sys.modules["pihole6_exporter"] = pihole6_exporter
-spec.loader.exec_module(pihole6_exporter)
+# Load environment variables from .env file
+load_dotenv()
 
-PiholeCollector = pihole6_exporter.PiholeCollector
+# Dynamically import the script as a module
+script_path = Path(__file__).parent.parent / "metrics_exporter" / "pihole6_metrics_exporter.py"
+spec = importlib.util.spec_from_file_location("pihole6_metrics_exporter", script_path)
+pihole6_metrics_exporter = importlib.util.module_from_spec(spec)
+sys.modules["pihole6_metrics_exporter"] = pihole6_metrics_exporter
+spec.loader.exec_module(pihole6_metrics_exporter)
+
+PiholeMetricsCollector = pihole6_metrics_exporter.PiholeMetricsCollector
 
 # Sample API responses to mock
 SUMMARY_RESPONSE = {
@@ -82,9 +92,10 @@ QUERIES_RESPONSE = {
 def test_collect_yields_expected_metrics():
     """Integration test: ensure collect yields expected metrics from real code path."""
     # Need 4 API calls: summary, upstreams, queries, summary again for cache metrics
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+    with patch.object(PiholeMetricsCollector, 'get_sid', return_value="test-session-id"), \
+         patch.object(PiholeMetricsCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
          patch('socket.gethostbyaddr', side_effect=socket.herror):
-        collector = PiholeCollector()
+        collector = PiholeMetricsCollector()
         metrics = list(collector.collect())
         
         # Check that basic metrics are present
@@ -102,9 +113,10 @@ def test_collect_yields_expected_metrics():
 
 def test_cache_metrics_in_query_count():
     """Test that cache metrics are available in pihole_query_count"""
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE]), \
+    with patch.object(PiholeMetricsCollector, 'get_sid', return_value="test-session-id"), \
+         patch.object(PiholeMetricsCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE]), \
          patch('socket.gethostbyaddr', side_effect=socket.herror):
-        collector = PiholeCollector()
+        collector = PiholeMetricsCollector()
         metrics = list(collector.collect())
         
         # Find query count metrics which includes cache data
@@ -126,9 +138,10 @@ def test_cache_metrics_in_query_count():
 
 def test_dns_error_counters():
     """Test that DNS errors are counted by rcode as raw counters."""
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+    with patch.object(PiholeMetricsCollector, 'get_sid', return_value="test-session-id"), \
+         patch.object(PiholeMetricsCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
          patch('socket.gethostbyaddr', side_effect=socket.herror):
-        collector = PiholeCollector()
+        collector = PiholeMetricsCollector()
         metrics = list(collector.collect())
         
         # Find DNS error counter metric - should always be present even if no errors
@@ -146,9 +159,10 @@ def test_dns_error_counters():
 
 def test_dns_queries_processed_counter():
     """Test that total queries processed counter is exported."""
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+    with patch.object(PiholeMetricsCollector, 'get_sid', return_value="test-session-id"), \
+         patch.object(PiholeMetricsCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
          patch('socket.gethostbyaddr', side_effect=socket.herror):
-        collector = PiholeCollector()
+        collector = PiholeMetricsCollector()
         metrics = list(collector.collect())
         
         # Find total queries counter
@@ -164,9 +178,10 @@ def test_dns_queries_processed_counter():
 
 def test_dns_timeout_counter():
     """Test that DNS timeouts are counted correctly."""
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+    with patch.object(PiholeMetricsCollector, 'get_sid', return_value="test-session-id"), \
+         patch.object(PiholeMetricsCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
          patch('socket.gethostbyaddr', side_effect=socket.herror):
-        collector = PiholeCollector()
+        collector = PiholeMetricsCollector()
         metrics = list(collector.collect())
         
         # Find timeout counter metric
@@ -181,9 +196,10 @@ def test_dns_timeout_counter():
 
 def test_latency_histogram_in_collect():
     """Test that DNS latency histogram is yielded by collect."""
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+    with patch.object(PiholeMetricsCollector, 'get_sid', return_value="test-session-id"), \
+         patch.object(PiholeMetricsCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
          patch('socket.gethostbyaddr', side_effect=socket.herror):
-        collector = PiholeCollector()
+        collector = PiholeMetricsCollector()
         metrics = list(collector.collect())
         
         # Check histogram is present
@@ -200,9 +216,10 @@ def test_latency_histogram_in_collect():
 
 def test_system_metrics_present():
     """Ensure system metrics are exported."""
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+    with patch.object(PiholeMetricsCollector, 'get_sid', return_value="test-session-id"), \
+         patch.object(PiholeMetricsCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
          patch('socket.gethostbyaddr', side_effect=socket.herror):
-        collector = PiholeCollector()
+        collector = PiholeMetricsCollector()
         metrics = list(collector.collect())
 
         metric_names = [m.name for m in metrics if hasattr(m, 'name')]
@@ -232,9 +249,10 @@ def test_hostname_resolution_for_client_label():
             return ("device.local", [], [ip])
         raise socket.herror
 
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+    with patch.object(PiholeMetricsCollector, 'get_sid', return_value="test-session-id"), \
+         patch.object(PiholeMetricsCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
          patch('socket.gethostbyaddr', side_effect=fake_gethost):
-        collector = PiholeCollector()
+        collector = PiholeMetricsCollector()
         metrics = list(collector.collect())
 
         client_metrics = [m for m in metrics if getattr(m, 'name', '') == "pihole_query_client_1m"]
@@ -245,9 +263,10 @@ def test_hostname_resolution_for_client_label():
 
 def test_hostname_resolution_failure_uses_ip():
     """If a hostname can't be resolved, the IP should be used as the label."""
-    with patch.object(PiholeCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
+    with patch.object(PiholeMetricsCollector, 'get_sid', return_value="test-session-id"), \
+         patch.object(PiholeMetricsCollector, 'get_api_call', side_effect=[SUMMARY_RESPONSE, UPSTREAMS_RESPONSE, QUERIES_RESPONSE, SUMMARY_RESPONSE]), \
          patch('socket.gethostbyaddr', side_effect=socket.herror):
-        collector = PiholeCollector()
+        collector = PiholeMetricsCollector()
         metrics = list(collector.collect())
 
         client_metrics = [m for m in metrics if getattr(m, 'name', '') == "pihole_query_client_1m"]
@@ -260,46 +279,51 @@ def test_hostname_resolution_failure_uses_ip():
 
 def test_hostname_resolution_cache_hit_and_miss():
     """resolve_hostname should use cache until TTL expires."""
-    collector = PiholeCollector()
-    with patch('socket.gethostbyaddr', return_value=("host.local", [], ["1.2.3.4"])) as mock_resolve, \
-         patch('time.time', side_effect=[0, 1, collector.CACHE_TTL + 1]):
-        # First lookup: cache is empty, should call resolver and cache result
-        assert collector.resolve_hostname('1.2.3.4') == "host"
-        # Second lookup: within TTL, should use cache (resolver NOT called again)
-        assert collector.resolve_hostname('1.2.3.4') == "host"
-        assert mock_resolve.call_count == 1  # Only first call hit the resolver
-        # Third lookup: after TTL, should call resolver again (cache expired)
-        assert collector.resolve_hostname('1.2.3.4') == "host"
-        assert mock_resolve.call_count == 2  # Resolver called again after cache expiry
+    # Mock the authentication response
+    auth_response = {"session": {"sid": "test-session-id"}}
+    with patch.object(PiholeMetricsCollector, 'get_sid', return_value="test-session-id"):
+        collector = PiholeMetricsCollector()
+        with patch('socket.gethostbyaddr', return_value=("host.local", [], ["1.2.3.4"])) as mock_resolve, \
+             patch('time.time', side_effect=[0, 1, collector.CACHE_TTL + 1]):
+            # First lookup: cache is empty, should call resolver and cache result
+            assert collector.resolve_hostname('1.2.3.4') == "host"
+            # Second lookup: within TTL, should use cache (resolver NOT called again)
+            assert collector.resolve_hostname('1.2.3.4') == "host"
+            assert mock_resolve.call_count == 1  # Only first call hit the resolver
+            # Third lookup: after TTL, should call resolver again (cache expired)
+            assert collector.resolve_hostname('1.2.3.4') == "host"
+            assert mock_resolve.call_count == 2  # Resolver called again after cache expiry
 
 def test_temperature_monitoring():
     """Test Raspberry Pi temperature monitoring functionality."""
-    collector = PiholeCollector()
-    
-    # Test successful temperature reading
-    with patch('subprocess.run') as mock_run:
-        mock_run.return_value.returncode = 0
-        mock_run.return_value.stdout = "temp=45.1'C\n"
+    # Mock the authentication response
+    with patch.object(PiholeMetricsCollector, 'get_sid', return_value="test-session-id"):
+        collector = PiholeMetricsCollector()
         
-        temp = collector._get_raspberry_pi_temperature()
-        assert temp == 45.1
-        mock_run.assert_called_once_with(['vcgencmd', 'measure_temp'], 
-                                        capture_output=True, text=True, timeout=5)
-    
-    # Test failed temperature reading (vcgencmd not found)
-    with patch('subprocess.run', side_effect=FileNotFoundError):
-        temp = collector._get_raspberry_pi_temperature()
-        assert temp is None
-    
-    # Test timeout
-    with patch('subprocess.run', side_effect=subprocess.TimeoutExpired(['vcgencmd', 'measure_temp'], 5)):
-        temp = collector._get_raspberry_pi_temperature()
-        assert temp is None
-    
-    # Test unexpected output format
-    with patch('subprocess.run') as mock_run:
-        mock_run.return_value.returncode = 0
-        mock_run.return_value.stdout = "unexpected_format\n"
+        # Test successful temperature reading
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = "temp=45.1'C\n"
+            
+            temp = collector._get_raspberry_pi_temperature()
+            assert temp == 45.1
+            mock_run.assert_called_once_with(['vcgencmd', 'measure_temp'], 
+                                            capture_output=True, text=True, timeout=5)
         
-        temp = collector._get_raspberry_pi_temperature()
-        assert temp is None
+        # Test failed temperature reading (vcgencmd not found)
+        with patch('subprocess.run', side_effect=FileNotFoundError):
+            temp = collector._get_raspberry_pi_temperature()
+            assert temp is None
+        
+        # Test timeout
+        with patch('subprocess.run', side_effect=subprocess.TimeoutExpired(['vcgencmd', 'measure_temp'], 5)):
+            temp = collector._get_raspberry_pi_temperature()
+            assert temp is None
+        
+        # Test unexpected output format
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = "unexpected_format\n"
+            
+            temp = collector._get_raspberry_pi_temperature()
+            assert temp is None

@@ -1,0 +1,788 @@
+{
+  "queries": [
+    {
+      "time": 1750621800,
+      "type": "A",
+      "status": "CACHED",
+      "domain": "google.com",
+      "client": {
+        "ip": "192.168.1.10"
+      },
+      "reply": {
+        "type": "A",
+        "time": 0.001
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750621812,
+      "type": "AAAA",
+      "status": "FORWARDED",
+      "domain": "facebook.com",
+      "client": {
+        "ip": "192.168.1.11"
+      },
+      "reply": {
+        "type": "AAAA",
+        "time": 0.002
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750621824,
+      "type": "PTR",
+      "status": "GRAVITY",
+      "domain": "amazon.com",
+      "client": {
+        "ip": "192.168.1.12"
+      },
+      "reply": {
+        "type": "PTR",
+        "time": 0.003
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750621836,
+      "type": "CNAME",
+      "status": "REGEX",
+      "domain": "netflix.com",
+      "client": {
+        "ip": "10.0.0.5"
+      },
+      "reply": {
+        "type": "CNAME",
+        "time": 0.004
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750621848,
+      "type": "MX",
+      "status": "CACHE_STALE",
+      "domain": "github.com",
+      "client": {
+        "ip": "172.16.0.3"
+      },
+      "reply": {
+        "type": "MX",
+        "time": 0.005
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750621860,
+      "type": "A",
+      "status": "CACHED",
+      "domain": "stackoverflow.com",
+      "client": {
+        "ip": "192.168.1.10"
+      },
+      "reply": {
+        "type": "A",
+        "time": 0.006
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750621872,
+      "type": "AAAA",
+      "status": "FORWARDED",
+      "domain": "reddit.com",
+      "client": {
+        "ip": "192.168.1.11"
+      },
+      "reply": {
+        "type": "AAAA",
+        "time": 0.007
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750621884,
+      "type": "PTR",
+      "status": "GRAVITY",
+      "domain": "youtube.com",
+      "client": {
+        "ip": "192.168.1.12"
+      },
+      "reply": {
+        "type": "PTR",
+        "time": 0.008
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750621896,
+      "type": "CNAME",
+      "status": "REGEX",
+      "domain": "twitter.com",
+      "client": {
+        "ip": "10.0.0.5"
+      },
+      "reply": {
+        "type": "CNAME",
+        "time": 0.009000000000000001
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750621908,
+      "type": "MX",
+      "status": "CACHE_STALE",
+      "domain": "linkedin.com",
+      "client": {
+        "ip": "172.16.0.3"
+      },
+      "reply": {
+        "type": "MX",
+        "time": 0.010000000000000002
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750621920,
+      "type": "A",
+      "status": "CACHED",
+      "domain": "google.com",
+      "client": {
+        "ip": "192.168.1.10"
+      },
+      "reply": {
+        "type": "A",
+        "time": 0.011
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750621932,
+      "type": "AAAA",
+      "status": "FORWARDED",
+      "domain": "facebook.com",
+      "client": {
+        "ip": "192.168.1.11"
+      },
+      "reply": {
+        "type": "AAAA",
+        "time": 0.012
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750621944,
+      "type": "PTR",
+      "status": "GRAVITY",
+      "domain": "amazon.com",
+      "client": {
+        "ip": "192.168.1.12"
+      },
+      "reply": {
+        "type": "PTR",
+        "time": 0.013000000000000001
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750621956,
+      "type": "CNAME",
+      "status": "REGEX",
+      "domain": "netflix.com",
+      "client": {
+        "ip": "10.0.0.5"
+      },
+      "reply": {
+        "type": "CNAME",
+        "time": 0.014000000000000002
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750621968,
+      "type": "MX",
+      "status": "CACHE_STALE",
+      "domain": "github.com",
+      "client": {
+        "ip": "172.16.0.3"
+      },
+      "reply": {
+        "type": "MX",
+        "time": 0.015
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750621980,
+      "type": "A",
+      "status": "CACHED",
+      "domain": "stackoverflow.com",
+      "client": {
+        "ip": "192.168.1.10"
+      },
+      "reply": {
+        "type": "A",
+        "time": 0.016
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750621992,
+      "type": "AAAA",
+      "status": "FORWARDED",
+      "domain": "reddit.com",
+      "client": {
+        "ip": "192.168.1.11"
+      },
+      "reply": {
+        "type": "AAAA",
+        "time": 0.017
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622004,
+      "type": "PTR",
+      "status": "GRAVITY",
+      "domain": "youtube.com",
+      "client": {
+        "ip": "192.168.1.12"
+      },
+      "reply": {
+        "type": "PTR",
+        "time": 0.018000000000000002
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622016,
+      "type": "CNAME",
+      "status": "REGEX",
+      "domain": "twitter.com",
+      "client": {
+        "ip": "10.0.0.5"
+      },
+      "reply": {
+        "type": "CNAME",
+        "time": 0.019000000000000003
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622028,
+      "type": "MX",
+      "status": "CACHE_STALE",
+      "domain": "linkedin.com",
+      "client": {
+        "ip": "172.16.0.3"
+      },
+      "reply": {
+        "type": "MX",
+        "time": 0.02
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622040,
+      "type": "A",
+      "status": "CACHED",
+      "domain": "google.com",
+      "client": {
+        "ip": "192.168.1.10"
+      },
+      "reply": {
+        "type": "A",
+        "time": 0.021
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622052,
+      "type": "AAAA",
+      "status": "FORWARDED",
+      "domain": "facebook.com",
+      "client": {
+        "ip": "192.168.1.11"
+      },
+      "reply": {
+        "type": "AAAA",
+        "time": 0.022000000000000002
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622064,
+      "type": "PTR",
+      "status": "GRAVITY",
+      "domain": "amazon.com",
+      "client": {
+        "ip": "192.168.1.12"
+      },
+      "reply": {
+        "type": "PTR",
+        "time": 0.023
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622076,
+      "type": "CNAME",
+      "status": "REGEX",
+      "domain": "netflix.com",
+      "client": {
+        "ip": "10.0.0.5"
+      },
+      "reply": {
+        "type": "CNAME",
+        "time": 0.024
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622088,
+      "type": "MX",
+      "status": "CACHE_STALE",
+      "domain": "github.com",
+      "client": {
+        "ip": "172.16.0.3"
+      },
+      "reply": {
+        "type": "MX",
+        "time": 0.025
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622100,
+      "type": "A",
+      "status": "CACHED",
+      "domain": "stackoverflow.com",
+      "client": {
+        "ip": "192.168.1.10"
+      },
+      "reply": {
+        "type": "A",
+        "time": 0.026000000000000002
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622112,
+      "type": "AAAA",
+      "status": "FORWARDED",
+      "domain": "reddit.com",
+      "client": {
+        "ip": "192.168.1.11"
+      },
+      "reply": {
+        "type": "AAAA",
+        "time": 0.027000000000000003
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622124,
+      "type": "PTR",
+      "status": "GRAVITY",
+      "domain": "youtube.com",
+      "client": {
+        "ip": "192.168.1.12"
+      },
+      "reply": {
+        "type": "PTR",
+        "time": 0.028
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622136,
+      "type": "CNAME",
+      "status": "REGEX",
+      "domain": "twitter.com",
+      "client": {
+        "ip": "10.0.0.5"
+      },
+      "reply": {
+        "type": "CNAME",
+        "time": 0.029
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622148,
+      "type": "MX",
+      "status": "CACHE_STALE",
+      "domain": "linkedin.com",
+      "client": {
+        "ip": "172.16.0.3"
+      },
+      "reply": {
+        "type": "MX",
+        "time": 0.030000000000000002
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622160,
+      "type": "A",
+      "status": "CACHED",
+      "domain": "google.com",
+      "client": {
+        "ip": "192.168.1.10"
+      },
+      "reply": {
+        "type": "A",
+        "time": 0.031
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622172,
+      "type": "AAAA",
+      "status": "FORWARDED",
+      "domain": "facebook.com",
+      "client": {
+        "ip": "192.168.1.11"
+      },
+      "reply": {
+        "type": "AAAA",
+        "time": 0.032
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622184,
+      "type": "PTR",
+      "status": "GRAVITY",
+      "domain": "amazon.com",
+      "client": {
+        "ip": "192.168.1.12"
+      },
+      "reply": {
+        "type": "PTR",
+        "time": 0.033
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622196,
+      "type": "CNAME",
+      "status": "REGEX",
+      "domain": "netflix.com",
+      "client": {
+        "ip": "10.0.0.5"
+      },
+      "reply": {
+        "type": "CNAME",
+        "time": 0.034
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622208,
+      "type": "MX",
+      "status": "CACHE_STALE",
+      "domain": "github.com",
+      "client": {
+        "ip": "172.16.0.3"
+      },
+      "reply": {
+        "type": "MX",
+        "time": 0.035
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622220,
+      "type": "A",
+      "status": "CACHED",
+      "domain": "stackoverflow.com",
+      "client": {
+        "ip": "192.168.1.10"
+      },
+      "reply": {
+        "type": "A",
+        "time": 0.036000000000000004
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622232,
+      "type": "AAAA",
+      "status": "FORWARDED",
+      "domain": "reddit.com",
+      "client": {
+        "ip": "192.168.1.11"
+      },
+      "reply": {
+        "type": "AAAA",
+        "time": 0.037000000000000005
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622244,
+      "type": "PTR",
+      "status": "GRAVITY",
+      "domain": "youtube.com",
+      "client": {
+        "ip": "192.168.1.12"
+      },
+      "reply": {
+        "type": "PTR",
+        "time": 0.038
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622256,
+      "type": "CNAME",
+      "status": "REGEX",
+      "domain": "twitter.com",
+      "client": {
+        "ip": "10.0.0.5"
+      },
+      "reply": {
+        "type": "CNAME",
+        "time": 0.039
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622268,
+      "type": "MX",
+      "status": "CACHE_STALE",
+      "domain": "linkedin.com",
+      "client": {
+        "ip": "172.16.0.3"
+      },
+      "reply": {
+        "type": "MX",
+        "time": 0.04
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622280,
+      "type": "A",
+      "status": "CACHED",
+      "domain": "google.com",
+      "client": {
+        "ip": "192.168.1.10"
+      },
+      "reply": {
+        "type": "A",
+        "time": 0.041
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622292,
+      "type": "AAAA",
+      "status": "FORWARDED",
+      "domain": "facebook.com",
+      "client": {
+        "ip": "192.168.1.11"
+      },
+      "reply": {
+        "type": "AAAA",
+        "time": 0.042
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622304,
+      "type": "PTR",
+      "status": "GRAVITY",
+      "domain": "amazon.com",
+      "client": {
+        "ip": "192.168.1.12"
+      },
+      "reply": {
+        "type": "PTR",
+        "time": 0.043000000000000003
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622316,
+      "type": "CNAME",
+      "status": "REGEX",
+      "domain": "netflix.com",
+      "client": {
+        "ip": "10.0.0.5"
+      },
+      "reply": {
+        "type": "CNAME",
+        "time": 0.044000000000000004
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622328,
+      "type": "MX",
+      "status": "CACHE_STALE",
+      "domain": "github.com",
+      "client": {
+        "ip": "172.16.0.3"
+      },
+      "reply": {
+        "type": "MX",
+        "time": 0.045
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622340,
+      "type": "A",
+      "status": "CACHED",
+      "domain": "stackoverflow.com",
+      "client": {
+        "ip": "192.168.1.10"
+      },
+      "reply": {
+        "type": "A",
+        "time": 0.046
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622352,
+      "type": "AAAA",
+      "status": "FORWARDED",
+      "domain": "reddit.com",
+      "client": {
+        "ip": "192.168.1.11"
+      },
+      "reply": {
+        "type": "AAAA",
+        "time": 0.047
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622364,
+      "type": "PTR",
+      "status": "GRAVITY",
+      "domain": "youtube.com",
+      "client": {
+        "ip": "192.168.1.12"
+      },
+      "reply": {
+        "type": "PTR",
+        "time": 0.048
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622376,
+      "type": "CNAME",
+      "status": "REGEX",
+      "domain": "twitter.com",
+      "client": {
+        "ip": "10.0.0.5"
+      },
+      "reply": {
+        "type": "CNAME",
+        "time": 0.049
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622388,
+      "type": "MX",
+      "status": "CACHE_STALE",
+      "domain": "linkedin.com",
+      "client": {
+        "ip": "172.16.0.3"
+      },
+      "reply": {
+        "type": "MX",
+        "time": 0.05
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622400,
+      "type": "A",
+      "status": "CACHED",
+      "domain": "google.com",
+      "client": {
+        "ip": "192.168.1.10"
+      },
+      "reply": {
+        "type": "A",
+        "time": 0.051000000000000004
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622412,
+      "type": "AAAA",
+      "status": "FORWARDED",
+      "domain": "facebook.com",
+      "client": {
+        "ip": "192.168.1.11"
+      },
+      "reply": {
+        "type": "AAAA",
+        "time": 0.052000000000000005
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622424,
+      "type": "PTR",
+      "status": "GRAVITY",
+      "domain": "amazon.com",
+      "client": {
+        "ip": "192.168.1.12"
+      },
+      "reply": {
+        "type": "PTR",
+        "time": 0.053000000000000005
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750622436,
+      "type": "CNAME",
+      "status": "REGEX",
+      "domain": "netflix.com",
+      "client": {
+        "ip": "10.0.0.5"
+      },
+      "reply": {
+        "type": "CNAME",
+        "time": 0.054
+      },
+      "upstream": "1.1.1.1"
+    },
+    {
+      "time": 1750622448,
+      "type": "MX",
+      "status": "CACHE_STALE",
+      "domain": "github.com",
+      "client": {
+        "ip": "172.16.0.3"
+      },
+      "reply": {
+        "type": "MX",
+        "time": 0.055
+      },
+      "upstream": "8.8.8.8"
+    },
+    {
+      "time": 1750446000,
+      "type": "A",
+      "status": "CACHED",
+      "domain": "old-entry.com",
+      "client": {
+        "ip": "10.0.0.99"
+      },
+      "reply": {
+        "type": "A",
+        "time": 0.123
+      },
+      "upstream": "8.8.4.4"
+    }
+  ]
+}

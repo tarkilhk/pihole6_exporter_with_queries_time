@@ -1,8 +1,27 @@
-# pihole6_exporter: A Prometheus-style Exporter for Pi-hole ver. 6
+# pihole6_metrics_exporter: A Prometheus-style Exporter for Pi-hole ver. 6
 
 This is a comprehensive Prometheus exporter for the new API in Pi-hole version 6, currently in beta.
 
 [There is a Grafana Dashboard as well!](https://grafana.com/grafana/dashboards/21043-pi-hole-ver6-stats/)
+
+## Project Structure
+
+```
+pihole6_exporter_with_queries_time/
+├── metrics_exporter/           # Prometheus metrics exporter
+│   ├── pihole6_metrics_exporter.py
+│   ├── pihole6_metrics_exporter.service
+│   ├── tests/
+│   └── README.md
+├── logs_exporter/              # Loki logs exporter
+│   ├── pihole6_logs_exporter.py
+│   ├── pihole6_logs_exporter.service
+│   ├── pihole6_logs_exporter.timer
+│   └── README.md
+├── requirements.txt
+├── README.md
+└── METRICS_USAGE.md
+```
 
 ## Features
 
@@ -13,13 +32,74 @@ This is a comprehensive Prometheus exporter for the new API in Pi-hole version 6
 ✅ **Prometheus Best Practices** - Raw counters instead of computed rates
 ✅ **Comprehensive Testing** - Full test suite with mock data
 ✅ **System Resource Metrics** - CPU, memory, disk, network, and SD card wear
+✅ **Log Export** - Query logs exported to Loki-compatible endpoints
 
-## pihole6_exporter
+## Quick Start
+
+### Metrics Exporter
+
+```bash
+cd metrics_exporter
+python pihole6_metrics_exporter.py -H localhost -k YOUR_API_TOKEN -p 9090
+```
+
+### Logs Exporter
+
+```bash
+cd logs_exporter
+python pihole6_logs_exporter.py -H localhost -k YOUR_API_TOKEN -u http://localhost:3100/loki/api/v1/push
+```
+
+## Installation
+
+### Metrics Exporter
+
+See [metrics_exporter/README.md](metrics_exporter/README.md) for detailed installation instructions.
+
+### Logs Exporter
+
+See [logs_exporter/README.md](logs_exporter/README.md) for detailed installation instructions.
+
+## API Token Configuration
+
+The exporters support multiple methods for providing the Pi-hole API token:
+
+1. **Command line argument**: Use `-k` or `--key` parameter
+2. **Environment variable**: Set `PIHOLE_API_TOKEN` environment variable
+3. **Token file**: Place the token in `etc/pihole6_exporter/pihole6_exporter.env`
+
+If using locally and you have the `Local clients need to authenticate to access the API` option un-selected, a key is not necessary. This key is the "app password", not the session ID that is created with it.
+
+The session ID should stay active as long as it is used at least every 5 minutes. A typical scrape interval is 1m. Currently, if the session ID expires, a restart of the exporter is necessary.
+
+## Requirements
+
+* Python 3.7+
+* Dependencies listed in `requirements.txt`:
+  * `prometheus-client` - Prometheus metrics library
+  * `requests` - HTTP library for Pi-hole API calls
+  * `urllib3` - HTTP client library
+  * `pytest` - Testing framework (for development)
+
+## Testing
+
+The project includes comprehensive integration tests:
+
+```bash
+# Run metrics exporter tests
+cd metrics_exporter
+python -m pytest tests/ -v
+
+# Run specific test
+python -m pytest tests/test_metrics_exporter_integration.py::test_dns_error_counters -v
+```
+
+## pihole6_metrics_exporter
 
 ### Running
 
 ```
-usage: pihole6_exporter [-h] [-H HOST] [-p PORT] [-k KEY] [-l LOG_LEVEL]
+usage: pihole6_metrics_exporter [-h] [-H HOST] [-p PORT] [-k KEY] [-l LOG_LEVEL]
 
 Prometheus exporter for Pi-hole version 6+
 
@@ -31,42 +111,6 @@ optional arguments:
   -l LOG_LEVEL, --log-level LOG_LEVEL
                         logging level (DEBUG, INFO, WARNING, ERROR)
 ```
-
-### API Token Configuration
-
-The exporter supports multiple methods for providing the Pi-hole API token:
-
-1. **Command line argument**: Use `-k` or `--key` parameter
-2. **Environment variable**: Set `PIHOLE_API_TOKEN` environment variable
-3. **Token file**: Place the token in `/etc/pihole6_exporter/pihole6_exporter.env`
-
-If using locally and you have the `Local clients need to authenticate to access the API` option un-selected, a key is not necessary. This key is the "app password", not the session ID that is created with it.
-
-The session ID should stay active as long as it is used at least every 5 minutes. A typical scrape interval is 1m. Currently, if the session ID expires, a restart of the exporter is necessary.
-
-### Requirements
-
-* Python 3.7+
-* Dependencies listed in `requirements.txt`:
-  * `prometheus-client` - Prometheus metrics library
-  * `requests` - HTTP library for Pi-hole API calls
-  * `urllib3` - HTTP client library
-  * `pytest` - Testing framework (for development)
-
-### Installation
-
-#### Manual Installation
-
-* Copy the exporter itself over to `/usr/local/bin`
-* Copy the systemd service file over to `/etc/systemd/system/` (or anywhere systemd will find it)
-    * Modify the `Exec=` line with any command line args (like a key) as needed. Currently there is no config file.
-    * For debugging, add `-l DEBUG` to the command line
-* `systemctl start pihole6_exporter` to start the exporter.
-* `systemctl enable pihole6_exporter` to have it start automatically.
-
-#### Automated Deployment
-
-If you have a self-hosted Gitea instance, there's a Gitea Action included that can deploy the exporter directly to your Raspberry Pi automatically on push/merge.
 
 ### Metrics Provided
 

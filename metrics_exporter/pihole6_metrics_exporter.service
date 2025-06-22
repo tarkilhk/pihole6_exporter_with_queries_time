@@ -1,0 +1,15 @@
+[Unit]
+Description=Pi-hole v6 Metric Exporter
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+EnvironmentFile=-etc/pihole6_exporter/pihole6_exporter.env
+ExecStart=/opt/pihole6_metrics_exporter/venv/bin/python /usr/local/bin/pihole6_metrics_exporter -H localhost -k ${PIHOLE_API_TOKEN} -l INFO
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

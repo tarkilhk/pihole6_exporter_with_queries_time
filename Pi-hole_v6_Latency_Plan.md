@@ -18,7 +18,7 @@ _Updated: ALL CORE METRICS COMPLETE! ✅_
 ## 2  Current Project Status ✅
 
 **COMPLETED:**
-- ✅ Basic Pi-hole v6 exporter working (`pihole6_exporter.py`)
+- ✅ Basic Pi-hole v6 exporter working (`pihole6_metrics_exporter.py`)
 - ✅ **DNS latency histogram** (`pihole_dns_latency_seconds`) with cache/forwarded labels
 - ✅ **DNS timeout counter** (`pihole_dns_timeouts_total`) tracking resolution failures  
 - ✅ **Cache hit ratio gauge** (`pihole_cache_hit_ratio_percent`) showing caching effectiveness
@@ -35,8 +35,8 @@ _Updated: ALL CORE METRICS COMPLETE! ✅_
 **CURRENT STRUCTURE:**
 ```
 pihole6_exporter_with_queries_time/
-├─ pihole6_exporter.py           # ← main exporter script WITH LATENCY
-├─ pihole6_exporter.service      # ← systemd service
+├─ pihole6_metrics_exporter.py           # ← main exporter script WITH LATENCY
+├─ pihole6_metrics_exporter.service      # ← systemd service
 ├─ pihole6_exporter.env          # ← API token
 ├─ requirements.txt              # ← dependencies
 ├─ tests/

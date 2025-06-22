@@ -1,0 +1,34 @@
+[Unit]
+Description=Run Pi-hole v6 Logs Exporter every 30 seconds
+After=network.target
+Wants=network-online.target
+
+[Timer]
+# Run every 30 seconds
+OnCalendar=*:*:0/30
+# Also run on boot after 10 seconds
+OnBootSec=10
+# Randomize start time to avoid thundering herd
+RandomizedDelaySec=5
+# Persist across reboots
+Persistent=true
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+# API token from environment file (if exists) or existing environment variable
+EnvironmentFile=-etc/pihole6_exporter/pihole6_exporter.env
+# Logs exporter specific environment variables
+Environment=LOKI_URL=http://localhost:3100/loki/api/v1/push
+Environment=STATE_FILE=/var/tmp/pihole_logs_exporter.state
+Environment=INITIAL_MINUTES=5
+ExecStart=/opt/pihole6_metrics_exporter/venv/bin/python /usr/local/bin/pihole6_logs_exporter -H localhost -k ${PIHOLE_API_TOKEN} -u ${LOKI_URL} -s ${STATE_FILE} -i ${INITIAL_MINUTES} -l INFO
+# Create state file directory if it doesn't exist
+ExecStartPre=/bin/mkdir -p /var/tmp
+# Set proper permissions for state file
+ExecStartPre=/bin/touch ${STATE_FILE}
+ExecStartPre=/bin/chmod 644 ${STATE_FILE}
+
+[Install]
+WantedBy=timers.target 
