@@ -22,9 +22,13 @@ jobs:
     - name: Build deploy bundle
       run: |
         mkdir -p deploy_files
-        cp pihole6_exporter.py deploy_files/
-        cp pihole6_exporter.service   deploy_files/
-        cp requirements.txt           deploy_files/
+        # Metrics exporter files
+        cp metrics_exporter/pihole6_metrics_exporter.py deploy_files/
+        cp metrics_exporter/pihole6_metrics_exporter.service deploy_files/
+        # Logs exporter files
+        cp logs_exporter/pihole6_logs_exporter.py deploy_files/
+        cp logs_exporter/pihole6_logs_exporter.timer deploy_files/
+        cp requirements.txt deploy_files/
 
     # ───────────────────────────────────────────────────────────────
     # 3)  Secure-copy the bundle to the Raspberry Pi
@@ -59,9 +63,9 @@ jobs:
           sudo apt-get install -y python3-venv
 
     # ───────────────────────────────────────────────────────────────
-    # 5)  Install the binary and systemd unit
+    # 5)  Install the binaries and systemd units
     # ───────────────────────────────────────────────────────────────
-    - name: Install exporter binary and unit file
+    - name: Install exporter binaries and unit files
       uses: appleboy/ssh-action@v1
       with:
         host:     ${{ secrets.PIHOLE_HOST }}
@@ -69,9 +73,13 @@ jobs:
         key:      ${{ secrets.PIHOLE_SSH_KEY }}
         script: |
           set -e
-          echo "📂 Installing binary & systemd unit…"
-          sudo install -m 755 /tmp/pihole6_exporter/pihole6_exporter.py /usr/local/bin/pihole6_exporter
-          sudo install -m 644 /tmp/pihole6_exporter/pihole6_exporter.service /etc/systemd/system/
+          echo "📂 Installing binaries & systemd units…"
+          # Metrics exporter
+          sudo install -m 755 /tmp/pihole6_exporter/pihole6_metrics_exporter.py /usr/local/bin/pihole6_metrics_exporter
+          sudo install -m 644 /tmp/pihole6_exporter/pihole6_metrics_exporter.service /etc/systemd/system/
+          # Logs exporter
+          sudo install -m 755 /tmp/pihole6_exporter/pihole6_logs_exporter.py /usr/local/bin/pihole6_logs_exporter
+          sudo install -m 644 /tmp/pihole6_exporter/pihole6_logs_exporter.timer /etc/systemd/system/
 
     # ───────────────────────────────────────────────────────────────
     # 6)  Create / refresh virtual-env and install Python deps
@@ -91,9 +99,9 @@ jobs:
           sudo /opt/pihole6_exporter/venv/bin/pip install --no-cache-dir -r /tmp/pihole6_exporter/requirements.txt
 
     # ───────────────────────────────────────────────────────────────
-    # 7)  Reload systemd, enable & restart service, clean up tmp dir
+    # 7)  Reload systemd, enable & restart services, clean up tmp dir
     # ───────────────────────────────────────────────────────────────
-    - name: Reload & restart service, clean up
+    - name: Reload & restart services, clean up
       uses: appleboy/ssh-action@v1
       with:
         host:     ${{ secrets.PIHOLE_HOST }}
@@ -101,12 +109,17 @@ jobs:
         key:      ${{ secrets.PIHOLE_SSH_KEY }}
         script: |
           set -e
-          echo "🔄 Reloading systemd & restarting service…"
+          echo "🔄 Reloading systemd & restarting services…"
           sudo systemctl daemon-reload
-          sudo systemctl enable pihole6_exporter
-          sudo systemctl restart pihole6_exporter
+          # Metrics exporter service
+          sudo systemctl enable pihole6_metrics_exporter
+          sudo systemctl restart pihole6_metrics_exporter
+          # Logs exporter timer
+          sudo systemctl enable pihole6_logs_exporter.timer
+          sudo systemctl start pihole6_logs_exporter.timer
           echo "📊 Checking service status…"
-          sudo systemctl status pihole6_exporter --no-pager
+          sudo systemctl status pihole6_metrics_exporter --no-pager
+          sudo systemctl status pihole6_logs_exporter.timer --no-pager
           echo "🧹 Cleaning up /tmp files…"
           rm -rf /tmp/pihole6_exporter
           echo "✅ Deployment completed successfully."
