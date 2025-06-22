@@ -8,6 +8,7 @@ import logging
 import argparse
 import json
 import socket
+from logging.handlers import RotatingFileHandler
 
 class PiholeLogsExporter:
     """
@@ -27,8 +28,11 @@ class PiholeLogsExporter:
         # Disable SSL warnings for self-signed certificates
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+        logging.info(f"Initializing Pi-hole Logs Exporter with host: {host}, loki_target: {loki_target}, state_file: {state_file}")
+        
         if key is not None and host is not None:
             self.using_auth = True
+            logging.info("Authentication enabled - will attempt to get session ID")
             self.sid = self.get_sid(key)
         else:
             logging.warning("No host or API token provided. Some information may not be available.")
@@ -38,6 +42,7 @@ class PiholeLogsExporter:
         auth_url = f"https://{self.host}:443/api/auth"
         headers = {"accept": "application/json", "content-type": "application/json"}
         json_data = {"password": key}
+        logging.info(f"Attempting to authenticate with Pi-hole API at {auth_url}")
         try:
             req = requests.post(auth_url, verify=False, headers=headers, json=json_data, timeout=10)
             req.raise_for_status()
@@ -74,6 +79,7 @@ class PiholeLogsExporter:
         if self.using_auth:
             headers["sid"] = self.sid
         
+        logging.info(f"Making API call to: {url}")
         try:
             req = requests.get(url, verify=False, headers=headers, timeout=30)
             req.raise_for_status()
@@ -91,19 +97,22 @@ class PiholeLogsExporter:
         """Reads the last successfully processed timestamp from the state file."""
         try:
             with open(self.state_file, 'r') as f:
-                return int(f.read().strip())
+                timestamp = int(f.read().strip())
+                logging.info(f"Read last timestamp from state file: {timestamp} ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))})")
+                return timestamp
         except FileNotFoundError:
             logging.info(f"State file not found at {self.state_file}. Starting from beginning (timestamp 0).")
             return 0
         except (ValueError, TypeError) as e:
             logging.error(f"Invalid timestamp in state file: {e}. Starting fresh.")
-            return int(time.time()) - (self.initial_history_minutes * 60)
+            return int(time.time()) - 3600  # Start from 1 hour ago
 
     def write_last_timestamp(self, timestamp):
         """Writes the latest timestamp to the state file."""
         try:
             with open(self.state_file, 'w') as f:
                 f.write(str(timestamp))
+            logging.info(f"Wrote timestamp to state file: {timestamp} ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))})")
         except IOError as e:
             logging.error(f"Error writing to state file {self.state_file}: {e}")
 
@@ -149,6 +158,8 @@ class PiholeLogsExporter:
         streams = {}
         max_timestamp = 0
         debug_logged = False
+
+        logging.info(f"Formatting {len(queries)} queries for Loki")
 
         for q in queries:
             if not debug_logged:
@@ -198,6 +209,7 @@ class PiholeLogsExporter:
             log_line = json.dumps(flat_q)
             streams[labels_tuple]["values"].append([ts_ns, log_line])
         
+        logging.info(f"Formatted {len(streams)} unique streams for Loki")
         return list(streams.values()), max_timestamp
 
     def send_to_loki(self, streams):
@@ -208,14 +220,21 @@ class PiholeLogsExporter:
 
         payload = {"streams": streams}
         headers = {"Content-Type": "application/json"}
+        loki_url = self.get_loki_url()
+        
+        logging.info(f"Sending {len(streams)} streams to Loki at {loki_url}")
+        log_count = sum(len(s['values']) for s in streams)
+        logging.info(f"Total log entries to send: {log_count}")
         
         try:
-            response = requests.post(self.get_loki_url(), data=json.dumps(payload), headers=headers, timeout=15)
+            response = requests.post(loki_url, data=json.dumps(payload), headers=headers, timeout=15)
             response.raise_for_status()
-            log_count = sum(len(s['values']) for s in streams)
             logging.info(f"Successfully sent {log_count} log entries to Loki.")
         except requests.exceptions.RequestException as e:
             logging.error(f"Failed to send logs to Loki: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                logging.error(f"Loki response status: {e.response.status_code}")
+                logging.error(f"Loki response body: {e.response.text}")
             raise
 
     def get_loki_url(self):
@@ -228,6 +247,8 @@ class PiholeLogsExporter:
         try:
             last_ts = self.read_last_timestamp()
             current_ts = int(time.time())
+            
+            logging.info(f"Current timestamp: {current_ts} ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(current_ts))})")
 
             if last_ts >= current_ts:
                 logging.info("Last timestamp is current, no new logs to fetch.")
@@ -254,6 +275,44 @@ class PiholeLogsExporter:
         except Exception as e:
             logging.error(f"An unexpected error occurred during the run: {e}", exc_info=True)
 
+def setup_logging(log_level, log_file=None):
+    """Setup logging with both console and file handlers."""
+    # Create formatter
+    formatter = logging.Formatter('time="%(asctime)s" level="%(levelname)s" message="%(message)s"')
+    
+    # Create logger
+    logger = logging.getLogger()
+    logger.setLevel(getattr(logging, log_level.upper()))
+    
+    # Clear any existing handlers
+    logger.handlers.clear()
+    
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+    
+    # File handler (if specified)
+    if log_file:
+        # Ensure log directory exists
+        log_dir = os.path.dirname(log_file)
+        if log_dir and not os.path.exists(log_dir):
+            try:
+                os.makedirs(log_dir, exist_ok=True)
+                logging.info(f"Created log directory: {log_dir}")
+            except Exception as e:
+                logging.error(f"Failed to create log directory {log_dir}: {e}")
+        
+        # Create rotating file handler
+        file_handler = RotatingFileHandler(
+            log_file, 
+            maxBytes=10*1024*1024,  # 10MB
+            backupCount=5
+        )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        logging.info(f"Logging to file: {log_file}")
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description="Pi-hole v6 Log Exporter for Loki.",
@@ -270,12 +329,13 @@ if __name__ == '__main__':
     parser.add_argument("-l", "--log-level", dest="log_level", type=str, required=False, default="INFO",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                         help="Set the logging level.")
+    parser.add_argument("--log-file", dest="log_file", type=str, required=False, default="/var/log/pihole6_exporter/pihole_logs_exporter.log",
+                        help="Path to the log file for detailed logging.")
 
     args = parser.parse_args()
 
-    # Set logging level
-    log_level = getattr(logging, args.log_level.upper())
-    logging.basicConfig(format='time="%(asctime)s" level="%(levelname)s" message="%(message)s"', level=log_level)
+    # Setup logging
+    setup_logging(args.log_level, args.log_file)
 
     try:
         exporter = PiholeLogsExporter(

@@ -9,7 +9,7 @@ User=root
 Group=root
 # API token from environment file (if exists) or existing environment variable
 EnvironmentFile=-/etc/pihole6_exporter/pihole6_exporter.env
-ExecStart=/opt/pihole6_exporter/venv/bin/python /usr/local/bin/pihole6_logs_exporter -H localhost -k ${PIHOLE_API_TOKEN} -u ${LOKI_URL} -l INFO
+ExecStart=/opt/pihole6_exporter/venv/bin/python /usr/local/bin/pihole6_logs_exporter -H localhost -k ${PIHOLE_API_TOKEN} -u ${LOKI_URL} -l INFO --log-file /var/log/pihole6_exporter/pihole_logs_exporter.log
 
 [Install]
 WantedBy=multi-user.target 
