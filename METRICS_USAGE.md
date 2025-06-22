@@ -250,15 +250,11 @@ system_load1
 **Metrics:**
 - `system_disk_usage_bytes` - Used root filesystem space
 - `system_disk_total_bytes` - Total root filesystem space
-- `system_sdcard_wear_percent` - Estimated SD card wear level
 
 **PromQL Examples:**
 ```promql
 # Disk usage percentage
 system_disk_usage_bytes / system_disk_total_bytes * 100
-
-# SD card wear level
-system_sdcard_wear_percent
 ```
 
 #### Network Usage

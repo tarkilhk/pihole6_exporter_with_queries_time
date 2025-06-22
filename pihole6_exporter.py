@@ -144,20 +144,6 @@ class PiholeCollector(Collector):
         self.latency_sums = {}
         self.latency_total_counts = {}
 
-    def _get_sdcard_wear_percent(self):
-        """Return estimated SD card wear level (0-100) or 0 if unavailable."""
-        path = "/sys/block/mmcblk0/device/life_time"
-        try:
-            with open(path, "r") as f:
-                data = f.read().strip().split()
-            if len(data) >= 2:
-                val = max(int(data[0], 16), int(data[1], 16))
-                if val > 0:
-                    return min((val - 1) * 10, 100)
-        except Exception as e:
-            logging.debug(f"SD card life_time not available: {e}")
-        return 0
-
     def _get_raspberry_pi_temperature(self):
         """Return Raspberry Pi CPU temperature in Celsius or None if unavailable."""
         try:
@@ -248,15 +234,6 @@ class PiholeCollector(Collector):
                     value=net.bytes_sent,
                 ),
             ]
-        )
-
-        wear = self._get_sdcard_wear_percent()
-        metrics.append(
-            GaugeMetricFamily(
-                "system_sdcard_wear_percent",
-                "Pihole estimated SD card wear level (0-100). 0 if unknown",
-                value=wear,
-            )
         )
 
         # Raspberry Pi temperature

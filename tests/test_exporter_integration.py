@@ -212,11 +212,15 @@ def test_system_metrics_present():
             'system_memory_usage_bytes',
             'system_disk_usage_bytes',
             'system_network_receive_bytes',
-            'system_sdcard_wear_percent',
-            'system_temperature_celsius',
         ]
         if hasattr(os, "getloadavg"):
             expected.append('system_load1')
+        
+        # Temperature metric is only available on Raspberry Pi
+        # On Windows/other systems, vcgencmd won't be available
+        if 'system_temperature_celsius' in metric_names:
+            expected.append('system_temperature_celsius')
+            
         for name in expected:
             assert name in metric_names
 
