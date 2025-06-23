@@ -56,13 +56,14 @@ class PiholeLogsExporter:
     def logout(self):
         """Logs out from the Pi-hole API session."""
         if not self.using_auth or not hasattr(self, 'sid'):
+            logging.warning("No session ID found, skipping logout.")
             return
         
-        logout_url = f"https://{self.host}:443/api/logout"
-        headers = {"accept": "application/json", "sid": self.sid}
+        logout_url = f"https://{self.host}:443/api/auth?sid={self.sid}"
+        headers = {"accept": "application/json"}
         
         try:
-            req = requests.post(logout_url, verify=False, headers=headers, timeout=10)
+            req = requests.delete(logout_url, verify=False, headers=headers, timeout=10)
             req.raise_for_status()
             logging.info("Successfully logged out from Pi-hole API session.")
         except requests.exceptions.RequestException as e:
