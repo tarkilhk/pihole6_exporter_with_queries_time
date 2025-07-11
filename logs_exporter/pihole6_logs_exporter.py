@@ -338,7 +338,7 @@ def setup_logging(log_level, log_file=None):
         # Create rotating file handler
         file_handler = RotatingFileHandler(
             log_file, 
-            maxBytes=10*1024*1024,  # 10MB
+            maxBytes=5*1024*1024,  # 5MB
             backupCount=5
         )
         file_handler.setFormatter(formatter)
@@ -368,18 +368,29 @@ if __name__ == '__main__':
 
     # Setup logging
     setup_logging(args.log_level, args.log_file)
+    logging.info("=== Pi-hole Logs Exporter Starting ===")
+    logging.info(f"Configuration:")
+    logging.info(f"  Pi-hole host: {args.host}")
+    logging.info(f"  Loki target: {args.loki_target}")
+    logging.info(f"  State file: {args.state_file}")
+    logging.info(f"  Log level: {args.log_level}")
+    logging.info(f"  Log file: {args.log_file}")
 
     exporter = None
     try:
+        logging.info("Creating Pi-hole Logs Exporter instance...")
         exporter = PiholeLogsExporter(
             host=args.host,
             key=args.key,
             loki_target=args.loki_target,
             state_file=args.state_file
         )
+        logging.info("Starting log export run...")
         exporter.run()
+        logging.info("=== Pi-hole Logs Exporter Completed Successfully ===")
     except Exception as e:
         logging.critical(f"Exporter failed to initialize or run: {e}", exc_info=True)
+        logging.error("=== Pi-hole Logs Exporter Failed ===")
         exit(1)
     finally:
         # Ensure logout happens even if initialization fails

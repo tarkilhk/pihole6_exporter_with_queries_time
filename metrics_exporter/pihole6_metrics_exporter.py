@@ -30,6 +30,7 @@ class PiholeMetricsCollector(Collector):
             host = os.getenv('PIHOLE_HOST', 'localhost')
         
         self.host = host
+        logging.info(f"Initializing Pi-hole metrics collector for host: {self.host}")
 
         # Try to get API key from environment variable if not provided
         if key is None:
@@ -37,7 +38,9 @@ class PiholeMetricsCollector(Collector):
 
         if key is not None:
             self.using_auth = True
+            logging.info("API token provided, attempting authentication...")
             self.sid = self.get_sid(key)
+            logging.info("Successfully authenticated with Pi-hole API")
         else:
             logging.warning("No API token provided. Some metrics may not be available.")
 
@@ -662,7 +665,7 @@ def setup_logging(log_level, log_file=None):
         # Create rotating file handler
         file_handler = RotatingFileHandler(
             log_file, 
-            maxBytes=10*1024*1024,  # 10MB
+            maxBytes=5*1024*1024,  # 5MB
             backupCount=5
         )
         file_handler.setFormatter(formatter)
@@ -690,6 +693,16 @@ if __name__ == '__main__':
 
     REGISTRY.register(PiholeMetricsCollector(args.host, args.key))
     logging.info("Ready to collect data")
+    logging.info(f"Metrics will be available at http://localhost:{args.port}/metrics")
+    logging.info("Waiting for Prometheus scrapes...")
+    
+    # Log periodic status messages
+    last_status_time = time.time()
     while True:
         time.sleep(1)
+        current_time = time.time()
+        # Log status every 5 minutes
+        if current_time - last_status_time >= 300:  # 5 minutes
+            logging.info("Exporter is running and waiting for Prometheus scrapes")
+            last_status_time = current_time
 
