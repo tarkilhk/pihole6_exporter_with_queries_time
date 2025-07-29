@@ -343,7 +343,6 @@ def setup_logging(log_level, log_file=None):
         )
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
-        logging.info(f"Logging to file: {log_file}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
