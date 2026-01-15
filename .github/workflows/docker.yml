@@ -50,7 +50,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/pihole6-metrics-exporter
           tags: |
             type=sha,prefix=metrics-sha-,format=short
-            type=raw,value=metrics-latest
+            type=raw,value=latest
             type=ref,event=tag,prefix=metrics-
 
       # Logs exporter image metadata and tags
@@ -62,7 +62,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/pihole6-logs-exporter
           tags: |
             type=sha,prefix=logs-sha-,format=short
-            type=raw,value=logs-latest
+            type=raw,value=latest
             type=ref,event=tag,prefix=logs-
 
       - name: Build and push metrics exporter image
