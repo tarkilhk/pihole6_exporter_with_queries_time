@@ -27,7 +27,7 @@ class PiholeMetricsCollector(Collector):
 
         # Try to get host from environment variable if not provided
         if host is None:
-            host = os.getenv('PIHOLE_HOST', 'localhost')
+            host = os.getenv('PIHOLE_URL', 'localhost')
         
         self.host = host.rstrip('/')  # Remove trailing slash if present
         logging.info(f"Initializing Pi-hole metrics collector for host: {self.host}")
@@ -676,7 +676,7 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description="Prometheus exporter for Pi-hole version 6+")
 
-    parser.add_argument("-H", "--host", dest="host", type=str, required=False, help="hostname/ip of pihole instance (default localhost)", default=os.getenv('PIHOLE_HOST', 'localhost'))
+    parser.add_argument("-H", "--host", dest="host", type=str, required=False, help="url of pihole instance (default http://localhost:80)", default=os.getenv('PIHOLE_URL', 'http://localhost:80'))
     parser.add_argument("-p", "--port", dest="port", type=int, required=False, help="port to expose for scraping (default 9666)", default=9666)
     parser.add_argument("-k", "--key", dest="key", type=str, required=False, help="authentication token (if required)", default=None)
     parser.add_argument("-l", "--log-level", dest="log_level", type=str, required=False, help="logging level (DEBUG, INFO, WARNING, ERROR)", default="INFO")

@@ -25,7 +25,7 @@ def test_get_api_call_matches_static_structure():
     Use PiholeLogsExporter.get_api_call to make a real API call to Pi-hole and verify the structure matches static_queries.json.
     """
     api_token = os.getenv("PIHOLE_API_TOKEN")
-    pihole_host = os.getenv("PIHOLE_HOST", "localhost")
+    pihole_host = os.getenv("PIHOLE_URL", "http://localhost:80")
     if not api_token:
         pytest.skip("No PIHOLE_API_TOKEN environment variable set.")
     exporter = PiholeLogsExporter(
@@ -74,7 +74,7 @@ def test_send_to_loki_integration():
         pytest.skip("No LOKI_TARGET environment variable set.")
     
     exporter = PiholeLogsExporter(
-        # host=os.getenv("PIHOLE_HOST", "localhost"),
+        # host=os.getenv("PIHOLE_URL", "localhost"),
         # key=os.getenv("PIHOLE_API_TOKEN"),
         host=None,
         key=None,
@@ -151,7 +151,7 @@ def test_end_to_end_pihole_to_loki():
     # --- 1. Setup ---
     api_token = os.getenv("PIHOLE_API_TOKEN")
     loki_target = os.getenv("LOKI_TARGET")
-    pihole_host = os.getenv("PIHOLE_HOST", "localhost")
+    pihole_host = os.getenv("PIHOLE_URL", "http://localhost:80")
     
     if not api_token:
         pytest.skip("PIHOLE_API_TOKEN environment variable not set.")

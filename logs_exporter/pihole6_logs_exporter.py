@@ -17,7 +17,7 @@ class PiholeLogsExporter:
     CACHE_TTL = 3600
 
     def __init__(self, host, key, loki_target, state_file):
-        self.host = host
+        self.host = host.rstrip('/')  # Remove trailing slash if present
         self.key = key
         self.loki_target = loki_target
         self.state_file = state_file
@@ -39,7 +39,7 @@ class PiholeLogsExporter:
 
     def get_sid(self, key):
         """Authenticates with the Pi-hole API and returns a session ID."""
-        auth_url = f"https://{self.host}:443/api/auth"
+        auth_url = f"{self.host}/api/auth"
         headers = {"accept": "application/json", "content-type": "application/json"}
         json_data = {"password": key}
         logging.info(f"Attempting to authenticate with Pi-hole API at {auth_url}")
@@ -59,7 +59,7 @@ class PiholeLogsExporter:
             logging.warning("No session ID found, skipping logout.")
             return
         
-        logout_url = f"https://{self.host}:443/api/auth?sid={self.sid}"
+        logout_url = f"{self.host}/api/auth?sid={self.sid}"
         headers = {"accept": "application/json"}
         
         try:
@@ -75,7 +75,7 @@ class PiholeLogsExporter:
 
     def get_api_call(self, api_path):
         """Makes a GET request to the Pi-hole API."""
-        url = f"https://{self.host}:443/api/{api_path}"
+        url = f"{self.host}/api/{api_path}"
         headers = {"accept": "application/json"}
         if self.using_auth:
             headers["sid"] = self.sid
@@ -349,7 +349,7 @@ if __name__ == '__main__':
         description="Pi-hole v6 Log Exporter for Loki.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("-H", "--host", dest="host", type=str, required=False, default=os.getenv("PIHOLE_HOST", "localhost"),
+    parser.add_argument("-H", "--host", dest="host", type=str, required=False, default=os.getenv("PIHOLE_URL", "localhost"),
                         help="Hostname or IP address of the Pi-hole instance.")
     parser.add_argument("-k", "--key", dest="key", type=str, required=False, default=None,
                         help="Pi-hole API token. Can also be set via PIHOLE_API_TOKEN env var.")
