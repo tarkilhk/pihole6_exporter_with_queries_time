@@ -1,0 +1,23 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies if needed
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the logs exporter script
+COPY logs_exporter/ ./logs_exporter/
+
+# Make script executable
+RUN chmod +x logs_exporter/pihole6_logs_exporter.py
+
+# Create directories for state and logs
+RUN mkdir -p /var/tmp /var/log/pihole6_exporter
+
+# Run logs exporter
+ENTRYPOINT ["python3", "logs_exporter/pihole6_logs_exporter.py"]
