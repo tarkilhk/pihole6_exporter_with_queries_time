@@ -82,7 +82,8 @@ class TestLogsExporterStatic:
                 host="localhost",
                 key="test-key",
                 loki_target="http://test-loki:3100/loki/api/v1/push",
-                state_file=self.state_file
+                state_file=self.state_file,
+                server_name="test-server"
             )
     
     def teardown_method(self):
@@ -211,6 +212,7 @@ class TestLogsExporterStatic:
         expected_labels_example = {
             "job": "pihole_logs_exporter",
             "service": "pihole_query_log",
+            "server": "test-server",
             "host": "localhost",
             "client_ip": "192.168.1.100",
             "client_name": "host-100",
@@ -231,6 +233,7 @@ class TestLogsExporterStatic:
         expected_labels_google = {
             "job": "pihole_logs_exporter",
             "service": "pihole_query_log",
+            "server": "test-server",
             "host": "localhost",
             "client_ip": "192.168.1.101",
             "client_name": "host-101",
@@ -248,6 +251,7 @@ class TestLogsExporterStatic:
         expected_labels_ads = {
             "job": "pihole_logs_exporter",
             "service": "pihole_query_log",
+            "server": "test-server",
             "host": "localhost",
             "client_ip": "192.168.1.100",
             "client_name": "host-100",

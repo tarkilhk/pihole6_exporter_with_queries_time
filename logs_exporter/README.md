@@ -31,6 +31,7 @@ The timer uses environment variables that can be set in `etc/pihole6_exporter/pi
 - `PIHOLE_URL` - Pi-hole server URL (default: http://localhost:80)
 - `PIHOLE_API_TOKEN` - Pi-hole API token for authentication
 - `LOKI_TARGET` - Loki server URL (e.g., http://localhost:3100/loki/api/v1/push)
+- `SERVER_NAME` - Server identifier for Loki labels (e.g., 'pihole-vm', 'tarkilnas'). Defaults to hostname if not set.
 - `STATE_FILE` - Path to state file for tracking last processed timestamp (default: /var/tmp/pihole_logs_exporter.state)
 
 ### Manual Execution

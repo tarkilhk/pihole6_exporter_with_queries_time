@@ -16,11 +16,13 @@ class PiholeLogsExporter:
     """
     CACHE_TTL = 3600
 
-    def __init__(self, host, key, loki_target, state_file):
+    def __init__(self, host, key, loki_target, state_file, server_name=None):
         self.host = host.rstrip('/')  # Remove trailing slash if present
         self.key = key
         self.loki_target = loki_target
         self.state_file = state_file
+        # Use provided server_name if set and not empty, otherwise default to hostname
+        self.server_name = (server_name.strip() if server_name and server_name.strip() else None) or socket.gethostname() or 'unknown'
         self.using_auth = False
         self.sid = None
         self.hostname_cache = {}
@@ -196,6 +198,7 @@ class PiholeLogsExporter:
             stream_labels = {
                 "job": "pihole_logs_exporter",
                 "service": "pihole_query_log",
+                "server": self.server_name,
                 "host": self.host,
                 "client_ip": client_ip,
                 "client_name": client_name,
@@ -357,6 +360,8 @@ if __name__ == '__main__':
                         help="URL of the Loki/Alloy push API endpoint (e.g., http://localhost:3100). Can also be set via LOKI_TARGET env var.")
     parser.add_argument("-s", "--state-file", dest="state_file", type=str, required=False, default="/var/tmp/pihole_logs_exporter.state",
                         help="Path to the state file for storing the last timestamp.")
+    parser.add_argument("--server", dest="server_name", type=str, required=False, default=os.getenv("SERVER_NAME"),
+                        help="Server identifier for Loki labels (e.g., 'pihole-vm', 'tarkilnas'). Defaults to hostname if not set. Can also be set via SERVER_NAME env var.")
     parser.add_argument("-l", "--log-level", dest="log_level", type=str, required=False, default="INFO",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                         help="Set the logging level.")
@@ -376,6 +381,7 @@ if __name__ == '__main__':
     logging.info(f"  Pi-hole host: {args.host}")
     logging.info(f"  Loki target: {args.loki_target}")
     logging.info(f"  State file: {args.state_file}")
+    logging.info(f"  Server name: {args.server_name or socket.gethostname() or 'unknown'}")
     logging.info(f"  Log level: {args.log_level}")
     logging.info(f"  Log file: {args.log_file}")
 
@@ -386,7 +392,8 @@ if __name__ == '__main__':
             host=args.host,
             key=args.key,
             loki_target=args.loki_target,
-            state_file=args.state_file
+            state_file=args.state_file,
+            server_name=args.server_name
         )
         logging.info("Starting log export run...")
         exporter.run()
