@@ -37,7 +37,7 @@ jobs:
     - name: Copy files to Raspberry Pi
       uses: appleboy/scp-action@v1
       with:
-        host:     ${{ secrets.PIHOLE_HOST }}
+        host:     pihole-vm
         username: ${{ secrets.PIHOLE_USER }}
         key:      ${{ secrets.PIHOLE_SSH_KEY }}
         source:   "deploy_files"          # send the whole folder
