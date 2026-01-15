@@ -38,8 +38,8 @@ jobs:
       uses: appleboy/scp-action@v1
       with:
         host:     pihole-vm
-        username: ${{ secrets.PIHOLE_USER }}
-        key:      ${{ secrets.PIHOLE_SSH_KEY }}
+        username: ansible
+        key:      ${{ secrets.ANSIBLE_SSH_KEY }}
         source:   "deploy_files"          # send the whole folder
         target:   "/tmp/pihole6_exporter"
         strip_components: 1               # drop the leading "deploy_files/" dir
@@ -51,9 +51,9 @@ jobs:
     - name: Ensure Python prerequisites
       uses: appleboy/ssh-action@v1
       with:
-        host:     ${{ secrets.PIHOLE_HOST }}
-        username: ${{ secrets.PIHOLE_USER }}
-        key:      ${{ secrets.PIHOLE_SSH_KEY }}
+        host:     pihole-vm
+        username: ansible
+        key:      ${{ secrets.ANSIBLE_SSH_KEY }}
         script: |
           set -e
           echo "🛠  Installing python3-pip / python3-venv if missing…"
@@ -69,9 +69,9 @@ jobs:
     - name: Install exporter binaries and unit files
       uses: appleboy/ssh-action@v1
       with:
-        host:     ${{ secrets.PIHOLE_HOST }}
-        username: ${{ secrets.PIHOLE_USER }}
-        key:      ${{ secrets.PIHOLE_SSH_KEY }}
+        host:     pihole-vm
+        username: ansible
+        key:      ${{ secrets.ANSIBLE_SSH_KEY }}
         script: |
           set -e
           echo "📂 Installing binaries & systemd units…"
@@ -89,9 +89,9 @@ jobs:
     - name: Create/update virtual environment
       uses: appleboy/ssh-action@v1
       with:
-        host:     ${{ secrets.PIHOLE_HOST }}
-        username: ${{ secrets.PIHOLE_USER }}
-        key:      ${{ secrets.PIHOLE_SSH_KEY }}
+        host:     pihole-vm
+        username: ansible
+        key:      ${{ secrets.ANSIBLE_SSH_KEY }}
         script: |
           set -e
           echo "🐍 Setting up virtual environment…"
@@ -106,9 +106,9 @@ jobs:
     - name: Reload & restart services, clean up
       uses: appleboy/ssh-action@v1
       with:
-        host:     ${{ secrets.PIHOLE_HOST }}
-        username: ${{ secrets.PIHOLE_USER }}
-        key:      ${{ secrets.PIHOLE_SSH_KEY }}
+        host:     pihole-vm
+        username: ansible
+        key:      ${{ secrets.ANSIBLE_SSH_KEY }}
         script: |
           set -e
           echo "🔄 Reloading systemd & restarting services…"
