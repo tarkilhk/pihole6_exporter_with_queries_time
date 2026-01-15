@@ -1,5 +1,5 @@
 [Unit]
-Description=Run Pi-hole v6 Logs Exporter every 30 seconds
+Description=Run Pi-hole v6 Logs Exporter every 5 minutes
 After=network.target
 Wants=network-online.target
 
