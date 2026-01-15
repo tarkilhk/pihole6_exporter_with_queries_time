@@ -29,7 +29,7 @@ class PiholeMetricsCollector(Collector):
         if host is None:
             host = os.getenv('PIHOLE_HOST', 'localhost')
         
-        self.host = host
+        self.host = host.rstrip('/')  # Remove trailing slash if present
         logging.info(f"Initializing Pi-hole metrics collector for host: {self.host}")
 
         # Try to get API key from environment variable if not provided
@@ -66,7 +66,7 @@ class PiholeMetricsCollector(Collector):
 
 
     def get_sid(self, key):
-        auth_url = "https://" + self.host + ":443/api/auth"
+        auth_url = self.host + "/api/auth"
         headers = {"accept": "application/json", "content_type": "application/json"}
         json_data = {"password": key}
         req = requests.post(auth_url, verify = False, headers = headers, json = json_data)
@@ -80,7 +80,7 @@ class PiholeMetricsCollector(Collector):
             logging.warning("No session ID found, skipping logout.")
             return
         
-        logout_url = f"https://{self.host}:443/api/auth?sid={self.sid}"
+        logout_url = f"{self.host}/api/auth?sid={self.sid}"
         headers = {"accept": "application/json"}
         
         try:
@@ -95,7 +95,7 @@ class PiholeMetricsCollector(Collector):
             self.using_auth = False
 
     def get_api_call(self, api_path):
-        url = "https://" + self.host + ":443/api/" + api_path
+        url = self.host + "/api/" + api_path
         if self.using_auth:
             headers = {"accept": "application/json", "sid": self.sid}
         else:

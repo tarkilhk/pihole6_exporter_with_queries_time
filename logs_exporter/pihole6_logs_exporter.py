@@ -353,8 +353,8 @@ if __name__ == '__main__':
                         help="Hostname or IP address of the Pi-hole instance.")
     parser.add_argument("-k", "--key", dest="key", type=str, required=False, default=None,
                         help="Pi-hole API token. Can also be set via PIHOLE_API_TOKEN env var.")
-    parser.add_argument("-t", "--loki-target", dest="loki_target", type=str, required=True,
-                        help="URL of the Loki/Alloy push API endpoint (e.g., http://localhost:3100).")
+    parser.add_argument("-t", "--loki-target", dest="loki_target", type=str, required=True, default=os.getenv("LOKI_TARGET"),
+                        help="URL of the Loki/Alloy push API endpoint (e.g., http://localhost:3100). Can also be set via LOKI_TARGET env var.")
     parser.add_argument("-s", "--state-file", dest="state_file", type=str, required=False, default="/var/tmp/pihole_logs_exporter.state",
                         help="Path to the state file for storing the last timestamp.")
     parser.add_argument("-l", "--log-level", dest="log_level", type=str, required=False, default="INFO",
@@ -364,6 +364,10 @@ if __name__ == '__main__':
                         help="Path to the log file for detailed logging.")
 
     args = parser.parse_args()
+
+    # Validate required arguments
+    if not args.loki_target:
+        parser.error("LOKI_TARGET must be provided either via -t/--loki-target argument or LOKI_TARGET environment variable")
 
     # Setup logging
     setup_logging(args.log_level, args.log_file)
