@@ -118,7 +118,7 @@ jobs:
           sudo systemctl restart pihole6_metrics_exporter
           # Logs exporter timer
           sudo systemctl enable pihole6_logs_exporter.timer
-          sudo systemctl start pihole6_logs_exporter.timer
+          sudo systemctl restart pihole6_logs_exporter.timer
           echo "📊 Checking service status…"
           sudo systemctl status pihole6_metrics_exporter --no-pager
           sudo systemctl status pihole6_logs_exporter.timer --no-pager
