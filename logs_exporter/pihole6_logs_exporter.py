@@ -17,6 +17,13 @@ class PiholeLogsExporter:
     CACHE_TTL = 3600
 
     def __init__(self, host, key, loki_target, state_file, server_name=None):
+        # Prefer environment variable if set, otherwise use provided host
+        env_host = os.getenv('PIHOLE_URL')
+        if env_host:
+            host = env_host
+        elif host is None or host == '':
+            raise ValueError("PIHOLE_URL environment variable must be set, or --host argument must be provided")
+        
         self.host = host.rstrip('/')  # Remove trailing slash if present
         self.key = key
         self.loki_target = loki_target
@@ -32,12 +39,12 @@ class PiholeLogsExporter:
 
         logging.info(f"Initializing Pi-hole Logs Exporter with host: {host}, loki_target: {loki_target}, state_file: {state_file}")
         
-        if key is not None and host is not None:
+        if key is not None:
             self.using_auth = True
             logging.info("Authentication enabled - will attempt to get session ID")
             self.sid = self.get_sid(key)
         else:
-            logging.warning("No host or API token provided. Some information may not be available.")
+            logging.warning("No API token provided. Pi-hole v6 may require authentication to access query logs. Some information may not be available.")
 
     def get_sid(self, key):
         """Authenticates with the Pi-hole API and returns a session ID."""
@@ -352,8 +359,8 @@ if __name__ == '__main__':
         description="Pi-hole v6 Log Exporter for Loki.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("-H", "--host", dest="host", type=str, required=False, default=os.getenv("PIHOLE_URL", "localhost"),
-                        help="Hostname or IP address of the Pi-hole instance.")
+    parser.add_argument("-H", "--host", dest="host", type=str, required=False, default=os.getenv("PIHOLE_URL"),
+                        help="Full URL of the Pi-hole instance. Defaults to PIHOLE_URL env var if not provided.")
     parser.add_argument("-k", "--key", dest="key", type=str, required=False, default=None,
                         help="Pi-hole API token. Can also be set via PIHOLE_API_TOKEN env var.")
     parser.add_argument("-t", "--loki-target", dest="loki_target", type=str, required=False, default=os.getenv("LOKI_TARGET"),
