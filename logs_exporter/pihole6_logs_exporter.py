@@ -361,7 +361,7 @@ if __name__ == '__main__':
     )
     parser.add_argument("-H", "--host", dest="host", type=str, required=False, default=os.getenv("PIHOLE_URL"),
                         help="Full URL of the Pi-hole instance. Defaults to PIHOLE_URL env var if not provided.")
-    parser.add_argument("-k", "--key", dest="key", type=str, required=False, default=None,
+    parser.add_argument("-k", "--key", dest="key", type=str, required=False, default=os.getenv("PIHOLE_API_TOKEN"),
                         help="Pi-hole API token. Can also be set via PIHOLE_API_TOKEN env var.")
     parser.add_argument("-t", "--loki-target", dest="loki_target", type=str, required=False, default=os.getenv("LOKI_TARGET"),
                         help="URL of the Loki/Alloy push API endpoint (e.g., http://localhost:3100). Can also be set via LOKI_TARGET env var.")
