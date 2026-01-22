@@ -43,6 +43,7 @@ class PiholeLogsExporter:
             self.using_auth = True
             logging.info("Authentication enabled - will attempt to get session ID")
             self.sid = self.get_sid(key)
+            logging.debug(f"Session ID stored: {self.sid[:10]}..." if self.sid else "Session ID is None")
         else:
             logging.warning("No API token provided. Pi-hole v6 may require authentication to access query logs. Some information may not be available.")
 
@@ -64,12 +65,19 @@ class PiholeLogsExporter:
 
     def logout(self):
         """Logs out from the Pi-hole API session."""
-        if not self.using_auth or not hasattr(self, 'sid'):
-            logging.warning("No session ID found, skipping logout.")
+        # Check if already logged out (idempotent)
+        if not self.using_auth or not self.sid:
+            logging.debug("No session ID found, skipping logout (already logged out or never authenticated).")
             return
         
-        logout_url = f"{self.host}/api/auth?sid={self.sid}"
+        # Store session ID before clearing it
+        session_id = self.sid
+        logout_url = f"{self.host}/api/auth?sid={session_id}"
         headers = {"accept": "application/json"}
+        
+        # Clear session ID immediately to prevent double logout attempts
+        self.sid = None
+        self.using_auth = False
         
         try:
             req = requests.delete(logout_url, verify=False, headers=headers, timeout=10)
@@ -77,17 +85,16 @@ class PiholeLogsExporter:
             logging.info("Successfully logged out from Pi-hole API session.")
         except requests.exceptions.RequestException as e:
             logging.warning(f"Failed to log out from Pi-hole API: {e}")
-        finally:
-            # Clear the session ID regardless of logout success
-            self.sid = None
-            self.using_auth = False
 
     def get_api_call(self, api_path):
         """Makes a GET request to the Pi-hole API."""
         url = f"{self.host}/api/{api_path}"
         headers = {"accept": "application/json"}
-        if self.using_auth:
+        if self.using_auth and self.sid:
             headers["sid"] = self.sid
+            logging.debug(f"Using session ID for API call: {self.sid[:10]}...")
+        elif self.using_auth and not self.sid:
+            logging.warning("Authentication enabled but session ID is missing for API call")
         
         logging.info(f"Making API call to: {url}")
         try:
@@ -167,6 +174,9 @@ class PiholeLogsExporter:
         reply = self.get_api_call(api_path)
         queries = reply.get("queries", [])
         logging.info(f"Fetched {len(queries)} new queries.")
+        if len(queries) == 0:
+            logging.debug(f"API response structure: {list(reply.keys())}")
+            logging.debug(f"Full API response (first 500 chars): {str(reply)[:500]}")
         return queries
 
     def format_for_loki(self, queries):
@@ -312,10 +322,7 @@ class PiholeLogsExporter:
 
         except Exception as e:
             logging.error(f"An unexpected error occurred during the run: {e}", exc_info=True)
-        finally:
-            # Always logout to free up API sessions
-            logging.info("Logging out from Pi-hole API session")
-            self.logout()
+        # Note: logout is handled in the main script's finally block to avoid double logout
 
 def setup_logging(log_level, log_file=None):
     """Setup logging with both console and file handlers."""
