@@ -42,8 +42,18 @@ class PiholeLogsExporter:
         if key is not None:
             self.using_auth = True
             logging.info("Authentication enabled - will attempt to get session ID")
-            self.sid = self.get_sid(key)
-            logging.debug(f"Session ID stored: {self.sid[:10]}..." if self.sid else "Session ID is None")
+            try:
+                self.sid = self.get_sid(key)
+                if self.sid:
+                    logging.info(f"Session ID stored successfully: {self.sid[:20]}... (length: {len(self.sid)})")
+                else:
+                    logging.error("Session ID is None after authentication - this should not happen!")
+                    self.using_auth = False
+            except Exception as e:
+                logging.error(f"Failed to get session ID: {e}")
+                self.sid = None
+                self.using_auth = False
+                raise
         else:
             logging.warning("No API token provided. Pi-hole v6 may require authentication to access query logs. Some information may not be available.")
 
@@ -58,7 +68,18 @@ class PiholeLogsExporter:
             req.raise_for_status()
             reply = req.json()
             logging.info("Successfully authenticated with Pi-hole API.")
-            return reply['session']['sid']
+            # Extract session ID with better error handling
+            try:
+                sid = reply['session']['sid']
+                if sid:
+                    logging.info(f"Session ID obtained: {sid[:20]}... (length: {len(sid)})")
+                else:
+                    logging.error("Session ID is empty in API response")
+                return sid
+            except KeyError as e:
+                logging.error(f"Session ID not found in API response. Response keys: {list(reply.keys())}")
+                logging.error(f"Full response: {reply}")
+                raise ValueError(f"Invalid authentication response structure: {e}")
         except requests.exceptions.RequestException as e:
             logging.error(f"Failed to authenticate with Pi-hole API: {e}")
             raise
@@ -66,12 +87,18 @@ class PiholeLogsExporter:
     def logout(self):
         """Logs out from the Pi-hole API session."""
         # Check if already logged out (idempotent)
-        if not self.using_auth or not self.sid:
-            logging.debug("No session ID found, skipping logout (already logged out or never authenticated).")
+        if not self.using_auth:
+            logging.debug("Authentication not enabled, skipping logout.")
+            return
+        
+        if not self.sid:
+            logging.warning("Session ID is None when logout called. This may indicate a problem with session management.")
+            logging.warning(f"Current state: using_auth={self.using_auth}, sid={self.sid}")
             return
         
         # Store session ID before clearing it
         session_id = self.sid
+        logging.info(f"Logging out with session ID: {session_id[:20]}...")
         logout_url = f"{self.host}/api/auth?sid={session_id}"
         headers = {"accept": "application/json"}
         
@@ -283,6 +310,12 @@ class PiholeLogsExporter:
     def run(self):
         """Main execution logic."""
         logging.info("Starting Pi-hole log export run.")
+        # Verify session ID is still valid if authentication is enabled
+        if self.using_auth:
+            if self.sid:
+                logging.debug(f"Session ID verified at start of run: {self.sid[:20]}...")
+            else:
+                logging.error("Session ID is missing at start of run! This should not happen.")
         try:
             # Validate Loki target before proceeding
             try:
