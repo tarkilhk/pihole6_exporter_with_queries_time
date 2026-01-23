@@ -47,13 +47,21 @@ class PiholeLogsExporter:
                 if self.sid:
                     logging.info(f"Session ID stored successfully: {self.sid[:20]}... (length: {len(self.sid)})")
                 else:
-                    logging.error("Session ID is None after authentication - this should not happen!")
-                    self.using_auth = False
+                    logging.warning("Session ID is None after authentication - API may work without it or use alternative auth")
+                    # Don't disable auth flag - we still attempted authentication
+                    # The API calls will handle missing session ID gracefully
+            except (ValueError, KeyError) as e:
+                # Authentication failed - log error but don't crash
+                # API calls might still work if authentication isn't strictly required
+                logging.error(f"Authentication failed: {e}")
+                logging.warning("Continuing without authentication - API calls may fail if authentication is required")
+                self.sid = None
+                # Keep using_auth = True so we know we tried, but API calls will handle missing SID
             except Exception as e:
-                logging.error(f"Failed to get session ID: {e}")
+                logging.error(f"Unexpected error during authentication: {e}")
                 self.sid = None
                 self.using_auth = False
-                raise
+                # Don't raise - allow the exporter to continue, API calls will handle missing auth
         else:
             logging.warning("No API token provided. Pi-hole v6 may require authentication to access query logs. Some information may not be available.")
 
@@ -65,20 +73,83 @@ class PiholeLogsExporter:
         logging.info(f"Attempting to authenticate with Pi-hole API at {auth_url}")
         try:
             req = requests.post(auth_url, verify=False, headers=headers, json=json_data, timeout=10)
+            
+            # Handle HTTP 401 (Unauthorized) - some Pi-hole instances return this for auth failures
+            if req.status_code == 401:
+                try:
+                    reply = req.json()
+                    session = reply.get('session', {})
+                    error_msg = session.get('message', 'Authentication failed (HTTP 401)')
+                    logging.error(f"Authentication failed with HTTP 401: {error_msg}")
+                    logging.error(f"Full response: {json.dumps(reply, indent=2)}")
+                    raise ValueError(f"Authentication failed: {error_msg}")
+                except (json.JSONDecodeError, KeyError):
+                    logging.error(f"Authentication failed with HTTP 401. Response: {req.text}")
+                    raise ValueError("Authentication failed: HTTP 401 Unauthorized")
+            
+            # For other status codes, raise if not successful
             req.raise_for_status()
             reply = req.json()
-            logging.info("Successfully authenticated with Pi-hole API.")
+            
             # Extract session ID with better error handling
+            # Handle both response formats:
+            # 1. HTTP 401 (already handled above)
+            # 2. HTTP 200 with error message in body (some instances)
             try:
-                sid = reply['session']['sid']
-                if sid:
+                session = reply.get('session', {})
+                sid = session.get('sid')
+                is_valid = session.get('valid', False)
+                error_msg = session.get('message', '')
+                
+                # Determine if authentication failed based on multiple indicators
+                # Some instances return HTTP 200 but indicate failure in the response body
+                auth_failed = False
+                failure_reason = None
+                
+                # Check 1: Session marked as invalid
+                if not is_valid:
+                    auth_failed = True
+                    failure_reason = error_msg or 'Session is not valid'
+                
+                # Check 2: Session ID is null/empty AND there's an error message
+                elif not sid or not sid.strip():
+                    if error_msg:
+                        auth_failed = True
+                        failure_reason = error_msg
+                    # If no error message but sid is null, might be edge case - log warning
+                    elif not error_msg:
+                        logging.warning("Session ID is null/empty but no error message provided")
+                        logging.warning(f"Response structure: {json.dumps(reply, indent=2)}")
+                
+                # Check 3: Error message indicates failure (catch-all for any error messages)
+                elif error_msg and any(keyword in error_msg.lower() for keyword in 
+                                      ['incorrect', 'invalid', 'failed', 'error', 'unauthorized', 'denied']):
+                    auth_failed = True
+                    failure_reason = error_msg
+                
+                # If authentication failed, raise error
+                if auth_failed:
+                    logging.error(f"Authentication failed: {failure_reason}")
+                    logging.error(f"Full response: {json.dumps(reply, indent=2)}")
+                    raise ValueError(f"Authentication failed: {failure_reason}")
+                
+                # Success case: valid session with non-empty session ID
+                if sid and sid.strip():
+                    logging.info("Successfully authenticated with Pi-hole API.")
                     logging.info(f"Session ID obtained: {sid[:20]}... (length: {len(sid)})")
+                    return sid
                 else:
-                    logging.error("Session ID is empty in API response")
-                return sid
+                    # Edge case: no error indicators but also no valid session ID
+                    logging.warning("Session ID is null or empty in API response (no error detected)")
+                    logging.warning(f"Response structure: {json.dumps(reply, indent=2)}")
+                    logging.warning("Continuing without session ID - API calls may still work if authentication is not strictly required")
+                    return None
             except KeyError as e:
                 logging.error(f"Session ID not found in API response. Response keys: {list(reply.keys())}")
-                logging.error(f"Full response: {reply}")
+                logging.error(f"Full response: {json.dumps(reply, indent=2)}")
+                # Try alternative response structures
+                if 'session' in reply:
+                    logging.error(f"Session object exists but structure is different: {reply['session']}")
                 raise ValueError(f"Invalid authentication response structure: {e}")
         except requests.exceptions.RequestException as e:
             logging.error(f"Failed to authenticate with Pi-hole API: {e}")
