@@ -71,6 +71,7 @@ jobs:
           context: .
           file: ./Dockerfile.metrics
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta_metrics.outputs.tags }}
           labels: ${{ steps.meta_metrics.outputs.labels }}
           cache-from: type=gha
@@ -82,6 +83,7 @@ jobs:
           context: .
           file: ./Dockerfile.logs
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta_logs.outputs.tags }}
           labels: ${{ steps.meta_logs.outputs.labels }}
           cache-from: type=gha
