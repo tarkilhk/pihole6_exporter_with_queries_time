@@ -110,14 +110,19 @@ def test_send_to_loki_integration():
                 "job": "pihole_logs_exporter",
                 "service": "pihole_query_log",
                 "host": "test-host",
-                "client_ip": "192.168.1.100",
-                "client_name": "test-client",
                 "type": "A",
                 "status": "gravity",
-                "domain": "test.example.com"
             },
             "values": [
-                [now_ns, json.dumps(log_line_dict)]
+                [
+                    now_ns,
+                    json.dumps(log_line_dict),
+                    {
+                        "domain": "test.example.com",
+                        "client_ip": "192.168.1.100",
+                        "client_name": "test-client",
+                    },
+                ]
             ]
         }
     ]
@@ -204,4 +209,4 @@ def test_end_to_end_pihole_to_loki():
 if __name__ == "__main__":
     test_get_api_call_matches_static_structure()
     test_send_to_loki_integration()
-    test_end_to_end_pihole_to_loki() 
+    test_end_to_end_pihole_to_loki()

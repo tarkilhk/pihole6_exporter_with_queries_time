@@ -186,91 +186,88 @@ class TestLogsExporterStatic:
         with patch.object(self.exporter, 'resolve_hostname', side_effect=lambda ip: f"host-{ip.split('.')[-1]}"):
             streams, max_timestamp = self.exporter.format_for_loki(sample_queries)
 
-        # Verify the structure - each unique combination of labels creates a separate stream
-        assert len(streams) == 3, f"Expected 3 unique streams (based on unique label combinations), got {len(streams)}"
+        # Verify the structure - only low-cardinality labels create streams.
+        # The two A/gravity queries differ by domain but share one stream.
+        assert len(streams) == 2, f"Expected 2 unique streams (based on low-cardinality label combinations), got {len(streams)}"
         assert max_timestamp == 1704067320, f"Expected max timestamp 1704067320, got {max_timestamp}"
 
-        # Find streams by their unique characteristics
-        stream_example_com = None
-        stream_google_com = None
-        stream_ads_example_com = None
-        
-        for stream in streams:
-            domain = stream['stream']['domain']
-            if domain == 'example.com':
-                stream_example_com = stream
-            elif domain == 'google.com':
-                stream_google_com = stream
-            elif domain == 'ads.example.com':
-                stream_ads_example_com = stream
+        # Find streams by their low-cardinality labels
+        stream_a_gravity = None
+        stream_aaaa_forwarded = None
 
-        # Verify stream for example.com
-        assert stream_example_com is not None, "Stream for example.com not found"
-        assert len(stream_example_com['values']) == 1, f"Expected 1 value for example.com, got {len(stream_example_com['values'])}"
-        
-        # Check labels for stream_example_com
-        expected_labels_example = {
+        for stream in streams:
+            assert "domain" not in stream['stream']
+            assert "client_ip" not in stream['stream']
+            assert "client_name" not in stream['stream']
+            assert "service_name" not in stream['stream']
+
+            if stream['stream']['type'] == 'A' and stream['stream']['status'] == 'gravity':
+                stream_a_gravity = stream
+            elif stream['stream']['type'] == 'AAAA' and stream['stream']['status'] == 'forwarded':
+                stream_aaaa_forwarded = stream
+
+        # Verify stream for A/gravity
+        assert stream_a_gravity is not None, "Stream for A/gravity not found"
+        assert len(stream_a_gravity['values']) == 2, f"Expected 2 values for A/gravity, got {len(stream_a_gravity['values'])}"
+
+        # Check labels for stream_a_gravity
+        expected_labels_a_gravity = {
             "job": "pihole_logs_exporter",
             "service": "pihole_query_log",
             "server": "test-server",
             "host": "localhost",
-            "client_ip": "192.168.1.100",
-            "client_name": "host-100",
             "type": "A",
             "status": "gravity",
-            "domain": "example.com"
         }
-        assert stream_example_com['stream'] == expected_labels_example, f"Labels mismatch for example.com: {stream_example_com['stream']}"
+        assert stream_a_gravity['stream'] == expected_labels_a_gravity, f"Labels mismatch for A/gravity: {stream_a_gravity['stream']}"
 
-        # Check timestamp for stream_example_com (should be in nanoseconds)
-        assert stream_example_com['values'][0][0] == "1704067200000000000", f"Timestamp should be 1704067200000000000, got {stream_example_com['values'][0][0]}"
+        # Check timestamps and structured metadata for stream_a_gravity
+        assert stream_a_gravity['values'][0][0] == "1704067200000000000", f"Timestamp should be 1704067200000000000, got {stream_a_gravity['values'][0][0]}"
+        assert stream_a_gravity['values'][0][2] == {
+            "domain": "example.com",
+            "client_ip": "192.168.1.100",
+            "client_name": "host-100",
+        }
+        assert stream_a_gravity['values'][1][2] == {
+            "domain": "ads.example.com",
+            "client_ip": "192.168.1.100",
+            "client_name": "host-100",
+        }
 
         # Verify stream for google.com
-        assert stream_google_com is not None, "Stream for google.com not found"
-        assert len(stream_google_com['values']) == 1, f"Expected 1 value for google.com, got {len(stream_google_com['values'])}"
+        assert stream_aaaa_forwarded is not None, "Stream for AAAA/forwarded not found"
+        assert len(stream_aaaa_forwarded['values']) == 1, f"Expected 1 value for AAAA/forwarded, got {len(stream_aaaa_forwarded['values'])}"
         
-        # Check labels for stream_google_com
-        expected_labels_google = {
+        # Check labels for stream_aaaa_forwarded
+        expected_labels_aaaa_forwarded = {
             "job": "pihole_logs_exporter",
             "service": "pihole_query_log",
             "server": "test-server",
             "host": "localhost",
-            "client_ip": "192.168.1.101",
-            "client_name": "host-101",
             "type": "AAAA",
             "status": "forwarded",
-            "domain": "google.com"
         }
-        assert stream_google_com['stream'] == expected_labels_google, f"Labels mismatch for google.com: {stream_google_com['stream']}"
-
-        # Verify stream for ads.example.com
-        assert stream_ads_example_com is not None, "Stream for ads.example.com not found"
-        assert len(stream_ads_example_com['values']) == 1, f"Expected 1 value for ads.example.com, got {len(stream_ads_example_com['values'])}"
-        
-        # Check labels for stream_ads_example_com
-        expected_labels_ads = {
-            "job": "pihole_logs_exporter",
-            "service": "pihole_query_log",
-            "server": "test-server",
-            "host": "localhost",
-            "client_ip": "192.168.1.100",
-            "client_name": "host-100",
-            "type": "A",
-            "status": "gravity",
-            "domain": "ads.example.com"
+        assert stream_aaaa_forwarded['stream'] == expected_labels_aaaa_forwarded, f"Labels mismatch for AAAA/forwarded: {stream_aaaa_forwarded['stream']}"
+        assert stream_aaaa_forwarded['values'][0][2] == {
+            "domain": "google.com",
+            "client_ip": "192.168.1.101",
+            "client_name": "host-101",
         }
-        assert stream_ads_example_com['stream'] == expected_labels_ads, f"Labels mismatch for ads.example.com: {stream_ads_example_com['stream']}"
 
-        # Verify that log values are JSON strings
+        # Verify that log values include structured metadata and JSON strings
         for stream in streams:
             for value in stream['values']:
-                assert len(value) == 2, f"Each value should have [timestamp, log_line], got {value}"
+                assert len(value) == 3, f"Each value should have [timestamp, log_line, structured_metadata], got {value}"
                 assert isinstance(value[1], str), f"Log line should be a string, got {type(value[1])}"
+                assert isinstance(value[2], dict), f"Structured metadata should be a dict, got {type(value[2])}"
                 # Verify it's valid JSON
                 try:
-                    json.loads(value[1])
+                    parsed_log = json.loads(value[1])
                 except json.JSONDecodeError:
                     assert False, f"Log line is not valid JSON: {value[1]}"
+                assert "domain" in parsed_log
+                assert "client_ip" in parsed_log
+                assert "client_name" in parsed_log
 
         print(f"✅ Test 4 passed: Loki formatting creates correct structure with {len(streams)} streams and {sum(len(s['values']) for s in streams)} total entries")
 
@@ -291,4 +288,4 @@ if __name__ == "__main__":
         print("=" * 50)
         print("🎉 All tests passed!")
     finally:
-        test_instance.teardown_method() 
+        test_instance.teardown_method()
