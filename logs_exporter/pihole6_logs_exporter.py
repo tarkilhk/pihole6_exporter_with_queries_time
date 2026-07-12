@@ -315,11 +315,13 @@ class PiholeLogsExporter:
                 "service": "pihole_query_log",
                 "server": self.server_name,
                 "host": self.host,
-                "client_ip": client_ip,
-                "client_name": client_name,
                 "type": q.get('type', 'unknown'),
                 "status": q.get('status', 'unknown'),
-                "domain": q.get('domain', 'unknown')
+            }
+            structured_metadata = {
+                "domain": str(q.get('domain', 'unknown')),
+                "client_ip": str(client_ip),
+                "client_name": str(client_name),
             }
             
             labels_tuple = tuple(sorted(stream_labels.items()))
@@ -332,7 +334,7 @@ class PiholeLogsExporter:
             
             flat_q = self._flatten_dict(q)
             log_line = json.dumps(flat_q)
-            streams[labels_tuple]["values"].append([ts_ns, log_line])
+            streams[labels_tuple]["values"].append([ts_ns, log_line, structured_metadata])
         
         logging.info(f"Formatted {len(streams)} unique streams for Loki")
         return list(streams.values()), max_timestamp
@@ -524,4 +526,4 @@ if __name__ == '__main__':
         # Ensure logout happens even if initialization fails
         if exporter:
             logging.info("Ensuring logout from Pi-hole API session")
-            exporter.logout() 
+            exporter.logout()
