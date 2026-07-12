@@ -47,7 +47,7 @@ python pihole6_metrics_exporter.py -H localhost -k YOUR_API_TOKEN -p 9090
 
 ```bash
 cd logs_exporter
-python pihole6_logs_exporter.py -H localhost -k YOUR_API_TOKEN -u http://localhost:3100/loki/api/v1/push
+python pihole6_logs_exporter.py -H http://localhost:80 -k YOUR_API_TOKEN -t http://localhost:3100 --server pihole-vm
 ```
 
 ## Installation
