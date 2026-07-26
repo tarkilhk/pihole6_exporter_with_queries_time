@@ -39,6 +39,9 @@ class PiholeMetricsCollector(Collector):
         if key is None:
             key = os.getenv('PIHOLE_API_TOKEN')
 
+        self._auth_key = key
+        self.sid_expires_at = 0
+
         if key is not None:
             self.using_auth = True
             logging.info("API token provided, attempting authentication...")
@@ -72,10 +75,28 @@ class PiholeMetricsCollector(Collector):
         auth_url = self.host + "/api/auth"
         headers = {"accept": "application/json", "content_type": "application/json"}
         json_data = {"password": key}
-        req = requests.post(auth_url, verify = False, headers = headers, json = json_data)
-        
+        req = requests.post(auth_url, verify = False, headers = headers, json = json_data, timeout = 10)
+        req.raise_for_status()
+
         reply = req.json()
-        return reply['session']['sid']
+        session = reply['session']
+
+        # Pi-hole v6 sessions expire after `validity` seconds (typically 1800).
+        # Refresh proactively well before that so we don't rely solely on hitting
+        # a 401 to notice expiry.
+        validity = session.get('validity', 1800)
+        self.sid_expires_at = time.time() + max(validity - 120, validity * 0.5)
+
+        return session['sid']
+
+    def ensure_fresh_session(self):
+        """Re-authenticate if we're not using auth-free access and the session is
+        missing or close to expiring."""
+        if not self.using_auth:
+            return
+        if self.sid is None or time.time() >= self.sid_expires_at:
+            logging.info("Pi-hole session missing or nearing expiry; re-authenticating")
+            self.sid = self.get_sid(self._auth_key)
 
     def logout(self):
         """Logs out from the Pi-hole API session."""
@@ -97,18 +118,23 @@ class PiholeMetricsCollector(Collector):
             self.sid = None
             self.using_auth = False
 
-    def get_api_call(self, api_path):
+    def get_api_call(self, api_path, _retry_on_auth_failure=True):
         url = self.host + "/api/" + api_path
         if self.using_auth:
             headers = {"accept": "application/json", "sid": self.sid}
         else:
             headers = {"accept": "application/json"}
         req = requests.get(url, verify = False, headers = headers)
-        
+
+        if req.status_code == 401 and self.using_auth and _retry_on_auth_failure:
+            logging.warning("Pi-hole API returned 401; session likely expired. Re-authenticating and retrying...")
+            self.sid = self.get_sid(self._auth_key)
+            return self.get_api_call(api_path, _retry_on_auth_failure=False)
+
         if req.status_code != 200:
             logging.error(f"API call failed with status {req.status_code}: {req.text}")
             raise Exception(f"API call failed with status {req.status_code}")
-            
+
         try:
             reply = req.json()
             logging.debug(f"API response for {api_path}: {reply}")
@@ -420,7 +446,9 @@ class PiholeMetricsCollector(Collector):
         """Collect metrics from Pi-hole API."""
         try:
             logging.info("Starting metrics collection")
-            
+
+            self.ensure_fresh_session()
+
             # Get basic stats
             reply = self.get_api_call("stats/summary")
             

@@ -152,7 +152,7 @@ class PiholeLogsExporter:
         except requests.exceptions.RequestException as e:
             logging.warning(f"Failed to log out from Pi-hole API: {e}")
 
-    def get_api_call(self, api_path):
+    def get_api_call(self, api_path, _retry_on_auth_failure=True):
         """Makes a GET request to the Pi-hole API."""
         url = f"{self.host}/api/{api_path}"
         headers = {"accept": "application/json"}
@@ -165,6 +165,12 @@ class PiholeLogsExporter:
         logging.info(f"Making API call to: {url}")
         try:
             req = requests.get(url, verify=False, headers=headers, timeout=30)
+
+            if req.status_code == 401 and self.using_auth and _retry_on_auth_failure:
+                logging.warning("Pi-hole API returned 401; session likely expired. Re-authenticating and retrying...")
+                self.sid = self.get_sid(self.key)
+                return self.get_api_call(api_path, _retry_on_auth_failure=False)
+
             req.raise_for_status()
             reply = req.json()
             logging.debug(f"API response for {api_path}: {reply}")
