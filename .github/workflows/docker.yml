@@ -1,11 +1,11 @@
-name: CI - Build and Publish Docker Images
+name: CI, Release, and Publish
 
 on:
   push:
-    branches: [ main ]
-    tags: [ 'v*' ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -13,19 +13,20 @@ concurrency:
 
 env:
   REGISTRY: docker.io
-  # Prefer an org set in repo/environment variables; fallback to Docker Hub username from secrets
   IMAGE_PREFIX: ${{ vars.DOCKERHUB_ORG || secrets.DOCKERHUB_USERNAME || github.repository_owner }}
 
 jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -39,16 +40,16 @@ jobs:
           LOKI_TARGET: http://127.0.0.1:9
         run: python -m pytest -v
 
-  build-and-push:
-    name: Build Docker Images
+  validate-images:
+    name: Validate Docker Images
+    if: github.event_name == 'pull_request'
     needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -56,56 +57,112 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Build metrics exporter image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile.metrics
+          push: false
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build logs exporter image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile.logs
+          push: false
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    name: Release and Publish
+    if: github.event_name != 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Create or update release
+        id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Checkout released commit
+        if: steps.release.outputs.release_created == 'true'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.release.outputs.tag_name }}
+
+      - name: Set up QEMU
+        if: steps.release.outputs.release_created == 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: steps.release.outputs.release_created == 'true'
+        uses: docker/setup-buildx-action@v3
+
       - name: Log in to Docker Hub
-        if: github.event_name != 'pull_request'
+        if: steps.release.outputs.release_created == 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Metrics exporter image metadata and tags
-      - name: Docker meta (metrics)
+      - name: Docker metadata for metrics exporter
+        if: steps.release.outputs.release_created == 'true'
         id: meta_metrics
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
-          images: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/pihole6-metrics-exporter
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/pihole6-metrics-exporter
           tags: |
-            type=sha,prefix=metrics-sha-,format=short
+            type=semver,pattern={{version}},value=${{ steps.release.outputs.tag_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.release.outputs.tag_name }}
+            type=semver,pattern={{major}},value=${{ steps.release.outputs.tag_name }}
             type=raw,value=latest
-            type=ref,event=tag,prefix=metrics-
+            type=sha,prefix=sha-
 
-      # Logs exporter image metadata and tags
-      - name: Docker meta (logs)
+      - name: Docker metadata for logs exporter
+        if: steps.release.outputs.release_created == 'true'
         id: meta_logs
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
-          images: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/pihole6-logs-exporter
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/pihole6-logs-exporter
           tags: |
-            type=sha,prefix=logs-sha-,format=short
+            type=semver,pattern={{version}},value=${{ steps.release.outputs.tag_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.release.outputs.tag_name }}
+            type=semver,pattern={{major}},value=${{ steps.release.outputs.tag_name }}
             type=raw,value=latest
-            type=ref,event=tag,prefix=logs-
+            type=sha,prefix=sha-
 
-      - name: Build and push metrics exporter image
-        uses: docker/build-push-action@v6
+      - name: Build and publish metrics exporter image
+        if: steps.release.outputs.release_created == 'true'
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.metrics
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta_metrics.outputs.tags }}
           labels: ${{ steps.meta_metrics.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push logs exporter image
-        uses: docker/build-push-action@v6
+      - name: Build and publish logs exporter image
+        if: steps.release.outputs.release_created == 'true'
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.logs
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta_logs.outputs.tags }}
           labels: ${{ steps.meta_logs.outputs.labels }}

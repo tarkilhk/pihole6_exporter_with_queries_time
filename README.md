@@ -99,6 +99,19 @@ python -m pytest tests/ -v
 python -m pytest tests/test_metrics_exporter_integration.py::test_dns_error_counters -v
 ```
 
+## Releases
+
+Releases follow [Semantic Versioning](https://semver.org/) and are automated by
+CI. Conventional Commit messages determine the next version: `fix:` increments
+the patch version, `feat:` increments the minor version, and a `!` or
+`BREAKING CHANGE:` increments the major version.
+
+Release Please keeps a release pull request current. Merging it creates the
+`vX.Y.Z` Git tag and GitHub Release, then publishes both Docker images with
+`X.Y.Z`, `X.Y`, `X`, `latest`, and immutable `sha-*` tags. The `latest` tag
+always points to the newest stable SemVer release, not every commit on `main`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the commit and release workflow.
+
 ## pihole6_metrics_exporter
 
 ### Running
