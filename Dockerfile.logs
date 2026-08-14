@@ -19,7 +19,7 @@ RUN chmod +x logs_exporter/pihole6_logs_exporter.py
 # Create directories for state and logs
 RUN mkdir -p /var/tmp /var/log/pihole6_exporter
 
-# Prometheus delivery-health endpoint when --continuous is enabled
+# Prometheus delivery-health endpoint
 EXPOSE 9101
 
 # Run logs exporter

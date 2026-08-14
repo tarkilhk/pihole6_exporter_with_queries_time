@@ -5,7 +5,7 @@ This directory contains the Pi-hole v6 logs exporter that exports query logs to 
 ## Files
 
 - `pihole6_logs_exporter.py` - Main logs exporter script
-- `pihole6_logs_exporter.timer` - Systemd timer to run the service periodically
+- `pihole6_logs_exporter.service` - Long-running systemd service
 
 ## Usage
 
@@ -13,20 +13,19 @@ The logs exporter fetches Pi-hole query logs and sends them to a Loki-compatible
 
 ### Installation
 
-1. Copy the timer file to systemd:
+1. Copy the service file to systemd:
    ```bash
-   sudo cp pihole6_logs_exporter.timer /etc/systemd/system/
+   sudo cp pihole6_logs_exporter.service /etc/systemd/system/
    ```
 
-2. Enable and start the timer:
+2. Enable and start the service:
    ```bash
-   sudo systemctl enable pihole6_logs_exporter.timer
-   sudo systemctl start pihole6_logs_exporter.timer
+   sudo systemctl enable --now pihole6_logs_exporter.service
    ```
 
 ### Configuration
 
-The timer uses environment variables that can be set in `etc/pihole6_exporter/pihole6_exporter.env`:
+The service uses environment variables that can be set in `/etc/pihole6_exporter/pihole6_exporter.env`:
 
 - `PIHOLE_URL` - Pi-hole server URL (default: http://localhost:80)
 - `PIHOLE_API_TOKEN` - Pi-hole API token for authentication
@@ -34,25 +33,14 @@ The timer uses environment variables that can be set in `etc/pihole6_exporter/pi
 - `SERVER_NAME` - Stable server identifier for Loki `host` and `server` labels (e.g., 'pihole-vm', 'tarkilnas'). Defaults to hostname if not set.
 - `STATE_FILE` - Path to state file for tracking last processed timestamp (default: /var/tmp/pihole_logs_exporter.state)
 
-### Manual Execution
+### Running the exporter
 
-One-shot mode remains the default. It exits non-zero when a Pi-hole request,
-Loki push, configuration check, or state write fails, which is appropriate for
-cron and the bundled systemd timer:
-
-```bash
-python pihole6_logs_exporter.py -H http://localhost:80 -k YOUR_API_TOKEN -t http://localhost:3100 --server pihole-vm
-```
-
-### Resilient Docker/service mode
-
-Use `--continuous` for a long-running container or service. This mode polls
-Pi-hole every 30 seconds by default and keeps the same process alive when Loki
-has a transient DNS, connection, timeout, HTTP 429, or HTTP 5xx failure:
+The exporter always runs as a long-lived process. It polls Pi-hole every 30
+seconds by default and keeps the same process alive when Loki has a transient
+DNS, connection, timeout, HTTP 429, or HTTP 5xx failure:
 
 ```bash
 python pihole6_logs_exporter.py \
-  --continuous \
   --poll-interval 30 \
   --retry-initial-delay 1 \
   --retry-max-delay 60 \
@@ -78,13 +66,12 @@ credentials, query strings, and response bodies.
 
 The persisted watermark is written atomically and changes only after Loki
 accepts a batch. A transient failure therefore causes the next attempt in the
-same process to fetch the unsent interval again. One-shot mode retains the same
-non-zero failure behavior as before.
+same process to fetch the unsent interval again.
 
 ### Delivery health metrics
 
-Continuous mode exposes Prometheus metrics at `/metrics` on port 9101 by
-default. Change the listener with `--metrics-address` and `--metrics-port`.
+The exporter exposes Prometheus metrics at `/metrics` on port 9101 by default.
+Change the listener with `--metrics-address` and `--metrics-port`.
 
 | Metric | Meaning |
 | --- | --- |
@@ -115,6 +102,6 @@ pihole_logs_exporter_consecutive_loki_push_failures > 0
 - Maintains an atomic watermark state file to avoid skipped log entries
 - Resolves client IPs to hostnames
 - Configurable initial history fetch
-- Exits non-zero on authentication, API, Loki push, or state-write failures
-- Offers opt-in continuous delivery with classified retry/backoff and Prometheus health metrics
-- Runs every 30 seconds via systemd timer
+- Exits non-zero on authentication, Pi-hole API, permanent Loki, configuration, or state-write failures
+- Runs continuously with classified retry/backoff and Prometheus health metrics
+- Polls every 30 seconds by default

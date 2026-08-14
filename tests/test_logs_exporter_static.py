@@ -284,8 +284,8 @@ class TestLogsExporterStatic:
                     server_name="test-server"
                 )
 
-    def test_run_propagates_loki_push_failure(self):
-        """Failed pushes should leave systemd/cron with a non-zero process status."""
+    def test_export_cycle_propagates_loki_push_failure(self):
+        """The supervisor must receive push failures so it can classify them."""
         with patch.object(self.exporter, 'read_last_timestamp', return_value=self.mock_now - 60), \
              patch('time.time', return_value=self.mock_now), \
              patch.object(self.exporter, 'fetch_queries', return_value=[{
@@ -297,7 +297,7 @@ class TestLogsExporterStatic:
              }]), \
              patch.object(self.exporter, 'send_to_loki', side_effect=RuntimeError("loki down")):
             with pytest.raises(RuntimeError, match="loki down"):
-                self.exporter.run()
+                self.exporter.export_once()
 
 if __name__ == "__main__":
     # Run all tests

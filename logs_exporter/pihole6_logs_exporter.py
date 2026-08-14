@@ -119,7 +119,7 @@ class DeliveryHealth:
 
 
 class ContinuousExporter:
-    """Supervise one-shot exports and retry only transient Loki failures."""
+    """Supervise export cycles and retry only transient Loki failures."""
 
     def __init__(
         self,
@@ -144,7 +144,7 @@ class ContinuousExporter:
 
         while not self.stop_event.is_set():
             try:
-                self.exporter.run()
+                self.exporter.export_once()
             except LokiPushError as error:
                 if not error.transient:
                     logging.error(
@@ -589,8 +589,8 @@ class PiholeLogsExporter:
 
         return f"{self.loki_target.rstrip('/')}/loki/api/v1/push"
 
-    def run(self):
-        """Main execution logic."""
+    def export_once(self):
+        """Export one query interval for the continuous supervisor."""
         logging.info("Starting Pi-hole log export run.")
         # Verify session ID is still valid if authentication is enabled
         if self.using_auth:
@@ -691,10 +691,8 @@ if __name__ == '__main__':
                         help="Set the logging level.")
     parser.add_argument("--log-file", dest="log_file", type=str, required=False, default="/var/log/pihole6_exporter/pihole_logs_exporter.log",
                         help="Path to the log file for detailed logging.")
-    parser.add_argument("--continuous", action="store_true",
-                        help="Keep running and retry transient Loki failures. One-shot mode remains the default.")
     parser.add_argument("--poll-interval", type=float, default=30,
-                        help="Seconds between successful runs in continuous mode.")
+                        help="Seconds between successful export cycles.")
     parser.add_argument("--retry-initial-delay", type=float, default=1,
                         help="Initial retry delay in seconds for transient Loki failures.")
     parser.add_argument("--retry-max-delay", type=float, default=60,
@@ -702,29 +700,27 @@ if __name__ == '__main__':
     parser.add_argument("--retry-jitter", type=float, default=0.2,
                         help="Downward jitter ratio from 0 to 1 for retry delays.")
     parser.add_argument("--metrics-address", default="0.0.0.0",
-                        help="Address for the continuous-mode Prometheus endpoint.")
+                        help="Address for the Prometheus delivery-health endpoint.")
     parser.add_argument("--metrics-port", type=int, default=9101,
-                        help="Port for the continuous-mode Prometheus endpoint.")
+                        help="Port for the Prometheus delivery-health endpoint.")
 
     args = parser.parse_args()
 
     # Validate required arguments
     if not args.loki_target:
         parser.error("LOKI_TARGET must be provided either via -t/--loki-target argument or LOKI_TARGET environment variable")
-    retry_policy = None
-    if args.continuous:
-        if args.poll_interval <= 0:
-            parser.error("--poll-interval must be positive")
-        if not 1 <= args.metrics_port <= 65535:
-            parser.error("--metrics-port must be between 1 and 65535")
-        try:
-            retry_policy = RetryPolicy(
-                initial_delay=args.retry_initial_delay,
-                max_delay=args.retry_max_delay,
-                jitter_ratio=args.retry_jitter,
-            )
-        except ValueError as error:
-            parser.error(str(error))
+    if args.poll_interval <= 0:
+        parser.error("--poll-interval must be positive")
+    if not 1 <= args.metrics_port <= 65535:
+        parser.error("--metrics-port must be between 1 and 65535")
+    try:
+        retry_policy = RetryPolicy(
+            initial_delay=args.retry_initial_delay,
+            max_delay=args.retry_max_delay,
+            jitter_ratio=args.retry_jitter,
+        )
+    except ValueError as error:
+        parser.error(str(error))
 
     # Setup logging
     setup_logging(args.log_level, args.log_file)
@@ -736,10 +732,10 @@ if __name__ == '__main__':
     logging.info(f"  Server name: {args.server_name or socket.gethostname() or 'unknown'}")
     logging.info(f"  Log level: {args.log_level}")
     logging.info(f"  Log file: {args.log_file}")
-    logging.info(f"  Mode: {'continuous' if args.continuous else 'one-shot'}")
+    logging.info("  Mode: continuous")
 
     exporter = None
-    delivery_health = DeliveryHealth() if args.continuous else None
+    delivery_health = DeliveryHealth()
     try:
         logging.info("Creating Pi-hole Logs Exporter instance...")
         exporter = PiholeLogsExporter(
@@ -750,27 +746,23 @@ if __name__ == '__main__':
             server_name=args.server_name,
             delivery_health=delivery_health,
         )
-        if args.continuous:
-            stop_event = threading.Event()
+        stop_event = threading.Event()
 
-            def request_shutdown(signum, _frame):
-                logging.info("Received signal %s; requesting clean shutdown", signum)
-                stop_event.set()
+        def request_shutdown(signum, _frame):
+            logging.info("Received signal %s; requesting clean shutdown", signum)
+            stop_event.set()
 
-            signal.signal(signal.SIGTERM, request_shutdown)
-            signal.signal(signal.SIGINT, request_shutdown)
-            delivery_health.start_server(args.metrics_address, args.metrics_port)
-            supervisor = ContinuousExporter(
-                exporter=exporter,
-                delivery_health=delivery_health,
-                retry_policy=retry_policy,
-                poll_interval=args.poll_interval,
-                stop_event=stop_event,
-            )
-            supervisor.run()
-        else:
-            logging.info("Starting one-shot log export run...")
-            exporter.run()
+        signal.signal(signal.SIGTERM, request_shutdown)
+        signal.signal(signal.SIGINT, request_shutdown)
+        delivery_health.start_server(args.metrics_address, args.metrics_port)
+        supervisor = ContinuousExporter(
+            exporter=exporter,
+            delivery_health=delivery_health,
+            retry_policy=retry_policy,
+            poll_interval=args.poll_interval,
+            stop_event=stop_event,
+        )
+        supervisor.run()
         logging.info("=== Pi-hole Logs Exporter Completed Successfully ===")
     except LokiPushError as e:
         logging.critical("Exporter failed to deliver logs: %s", e)
@@ -781,8 +773,7 @@ if __name__ == '__main__':
         logging.error("=== Pi-hole Logs Exporter Failed ===")
         exit(1)
     finally:
-        if delivery_health:
-            delivery_health.stop_server()
+        delivery_health.stop_server()
         # Ensure logout happens even if initialization fails
         if exporter:
             logging.info("Ensuring logout from Pi-hole API session")

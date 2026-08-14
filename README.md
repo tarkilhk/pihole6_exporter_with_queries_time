@@ -16,7 +16,6 @@ pihole6_exporter_with_queries_time/
 ├── logs_exporter/              # Loki logs exporter
 │   ├── pihole6_logs_exporter.py
 │   ├── pihole6_logs_exporter.service
-│   ├── pihole6_logs_exporter.timer
 │   └── README.md
 ├── requirements.txt
 ├── README.md
@@ -50,11 +49,11 @@ cd logs_exporter
 python pihole6_logs_exporter.py -H http://localhost:80 -k YOUR_API_TOKEN -t http://localhost:3100 --server pihole-vm
 ```
 
-The logs exporter defaults to one-shot execution for cron and systemd timers.
-For a long-running Docker service that retries transient Loki outages in the
-same process, add `--continuous`; this also exposes delivery-health metrics on
-port 9101. See [logs_exporter/README.md](logs_exporter/README.md) for retry,
-shutdown, metrics, and alerting details.
+The logs exporter is a long-running process that polls every 30 seconds, retries
+transient Loki outages with capped exponential backoff, and exposes
+delivery-health metrics on port 9101. See
+[logs_exporter/README.md](logs_exporter/README.md) for retry, shutdown, metrics,
+and alerting details.
 
 ## Installation
 

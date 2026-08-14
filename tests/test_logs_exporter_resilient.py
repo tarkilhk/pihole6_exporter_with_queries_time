@@ -61,11 +61,12 @@ class FakePiholeHandler(BaseHTTPRequestHandler):
 
 class AlwaysUnavailableLokiHandler(BaseHTTPRequestHandler):
     attempted = threading.Event()
+    status_code = 503
 
     def do_POST(self):
         self.rfile.read(int(self.headers["Content-Length"]))
         self.__class__.attempted.set()
-        self.send_response(503)
+        self.send_response(self.__class__.status_code)
         self.end_headers()
 
     def log_message(self, _format, *args):
@@ -153,6 +154,7 @@ def test_cli_failure_trace_never_exposes_loki_url_secrets(tmp_path):
     secret_path = "tenant-secret-placeholder"
     secret_token = "token-secret-placeholder"
     AlwaysUnavailableLokiHandler.attempted = threading.Event()
+    AlwaysUnavailableLokiHandler.status_code = 401
 
     with running_http_server(FakePiholeHandler) as pihole, \
          running_http_server(AlwaysUnavailableLokiHandler) as loki:
@@ -190,7 +192,7 @@ def test_cli_failure_trace_never_exposes_loki_url_secrets(tmp_path):
         requests.exceptions.Timeout("read timed out"),
     ],
 )
-def test_continuous_mode_retries_connection_and_timeout_then_succeeds(tmp_path, failure):
+def test_exporter_retries_connection_and_timeout_then_succeeds(tmp_path, failure):
     exporter, state_file = make_exporter(tmp_path)
     stopped = threading.Event()
     original_write = exporter.write_last_timestamp
@@ -213,7 +215,7 @@ def test_continuous_mode_retries_connection_and_timeout_then_succeeds(tmp_path, 
 
 
 @pytest.mark.parametrize("status_code", [429, 500, 503])
-def test_continuous_mode_retries_transient_http_status_then_succeeds(tmp_path, status_code):
+def test_exporter_retries_transient_http_status_then_succeeds(tmp_path, status_code):
     exporter, state_file = make_exporter(tmp_path)
     stopped = threading.Event()
     original_write = exporter.write_last_timestamp
@@ -237,7 +239,7 @@ def test_continuous_mode_retries_transient_http_status_then_succeeds(tmp_path, s
 
 
 @pytest.mark.parametrize("status_code", [400, 401, 403])
-def test_continuous_mode_fails_fast_for_permanent_http_status(tmp_path, status_code):
+def test_exporter_fails_fast_for_permanent_http_status(tmp_path, status_code):
     exporter, state_file = make_exporter(tmp_path)
 
     with patch.object(exporter, "fetch_queries", return_value=[dict(QUERY)]), \
@@ -256,7 +258,7 @@ def test_continuous_mode_fails_fast_for_permanent_http_status(tmp_path, status_c
     assert state_file.read_text() == "100"
 
 
-def test_invalid_loki_configuration_fails_before_continuous_loop(tmp_path):
+def test_invalid_loki_configuration_fails_before_export_loop(tmp_path):
     exporter, state_file = make_exporter(tmp_path, loki_target="loki-without-a-scheme")
 
     with pytest.raises(ValueError, match="complete URL"):
@@ -276,7 +278,7 @@ def test_failed_push_never_advances_watermark(tmp_path):
              side_effect=requests.exceptions.ConnectionError("down"),
          ):
         with pytest.raises(LokiPushError):
-            exporter.run()
+            exporter.export_once()
 
     assert state_file.read_text() == "100"
 
@@ -302,7 +304,7 @@ def test_signal_event_interrupts_backoff_promptly(tmp_path):
         attempted.set()
         raise LokiPushError("connection_error", transient=True)
 
-    with patch.object(exporter, "run", side_effect=fail_once):
+    with patch.object(exporter, "export_once", side_effect=fail_once):
         worker = threading.Thread(
             target=run_supervised,
             kwargs={
@@ -327,6 +329,7 @@ def test_cli_signal_interrupts_backoff_and_exits_cleanly(tmp_path, shutdown_sign
     now = int(time.time())
     FakePiholeHandler.query_time = now - 30
     AlwaysUnavailableLokiHandler.attempted = threading.Event()
+    AlwaysUnavailableLokiHandler.status_code = 503
     state_file = tmp_path / "exporter.state"
     state_file.write_text(str(now - 60))
 
@@ -336,7 +339,6 @@ def test_cli_signal_interrupts_backoff_and_exits_cleanly(tmp_path, shutdown_sign
             [
                 sys.executable,
                 str(EXPORTER_SCRIPT),
-                "--continuous",
                 "--host",
                 f"http://127.0.0.1:{pihole.server_address[1]}",
                 "--loki-target",
@@ -368,6 +370,18 @@ def test_cli_signal_interrupts_backoff_and_exits_cleanly(tmp_path, shutdown_sign
 
     assert process.returncode == 0, stderr
     assert state_file.read_text() == str(now - 60)
+
+
+def test_cli_rejects_removed_continuous_compatibility_flag():
+    result = subprocess.run(
+        [sys.executable, str(EXPORTER_SCRIPT), "--continuous"],
+        capture_output=True,
+        text=True,
+        env=clean_subprocess_environment(),
+    )
+
+    assert result.returncode == 2
+    assert "unrecognized arguments: --continuous" in result.stderr
 
 
 def test_delivery_metrics_are_machine_readable_and_reset_after_success(tmp_path):

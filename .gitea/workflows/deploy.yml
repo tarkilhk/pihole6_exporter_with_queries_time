@@ -49,7 +49,6 @@ jobs:
         # Logs exporter files
         cp logs_exporter/pihole6_logs_exporter.py deploy_files/
         cp logs_exporter/pihole6_logs_exporter.service deploy_files/
-        cp logs_exporter/pihole6_logs_exporter.timer deploy_files/
         cp requirements.txt deploy_files/
 
     # ───────────────────────────────────────────────────────────────
@@ -102,7 +101,6 @@ jobs:
           # Logs exporter
           sudo install -m 755 /tmp/pihole6_exporter/pihole6_logs_exporter.py /usr/local/bin/pihole6_logs_exporter
           sudo install -m 644 /tmp/pihole6_exporter/pihole6_logs_exporter.service /etc/systemd/system/
-          sudo install -m 644 /tmp/pihole6_exporter/pihole6_logs_exporter.timer /etc/systemd/system/
 
     # ───────────────────────────────────────────────────────────────
     # 6)  Create / refresh virtual-env and install Python deps
@@ -133,16 +131,19 @@ jobs:
         script: |
           set -e
           echo "🔄 Reloading systemd & restarting services…"
+          # Remove the obsolete scheduled runner before starting the long-lived service.
+          sudo systemctl disable --now pihole6_logs_exporter.timer || true
+          sudo rm -f /etc/systemd/system/pihole6_logs_exporter.timer
           sudo systemctl daemon-reload
           # Metrics exporter service
           sudo systemctl enable pihole6_metrics_exporter
           sudo systemctl restart pihole6_metrics_exporter
-          # Logs exporter timer
-          sudo systemctl enable pihole6_logs_exporter.timer
-          sudo systemctl restart pihole6_logs_exporter.timer
+          # Logs exporter service
+          sudo systemctl enable pihole6_logs_exporter
+          sudo systemctl restart pihole6_logs_exporter
           echo "📊 Checking service status…"
           sudo systemctl status pihole6_metrics_exporter --no-pager
-          sudo systemctl status pihole6_logs_exporter.timer --no-pager
+          sudo systemctl status pihole6_logs_exporter --no-pager
           echo "🧹 Cleaning up /tmp files…"
           rm -rf /tmp/pihole6_exporter
           echo "✅ Deployment completed successfully."

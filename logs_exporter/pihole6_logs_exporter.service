@@ -4,7 +4,7 @@ After=network.target
 Wants=network-online.target
 
 [Service]
-Type=oneshot
+Type=simple
 User=root
 Group=root
 # API token from environment file (if exists) or existing environment variable
@@ -12,4 +12,4 @@ EnvironmentFile=-/etc/pihole6_exporter/pihole6_exporter.env
 ExecStart=/opt/pihole6_exporter/venv/bin/python /usr/local/bin/pihole6_logs_exporter -H http://localhost:80 -k ${PIHOLE_API_TOKEN} -t ${LOKI_TARGET} --server pihole-vm -l INFO --log-file /var/log/pihole6_exporter/pihole_logs_exporter.log
 
 [Install]
-WantedBy=multi-user.target 
+WantedBy=multi-user.target
