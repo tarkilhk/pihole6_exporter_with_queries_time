@@ -7,8 +7,186 @@ import urllib3
 import logging
 import argparse
 import json
+import random
+import signal
 import socket
+import tempfile
+import threading
+from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
+from urllib.parse import urlsplit, urlunsplit
+
+from prometheus_client import CollectorRegistry, Gauge, start_http_server
+
+
+class LokiPushError(RuntimeError):
+    """A secret-safe Loki delivery failure with a retry classification."""
+
+    def __init__(self, reason, transient, status_code=None):
+        self.reason = reason
+        self.transient = transient
+        self.status_code = status_code
+        classification = "transient" if transient else "permanent"
+        status = f", HTTP {status_code}" if status_code is not None else ""
+        super().__init__(f"Loki push failed ({classification}: {reason}{status})")
+
+
+@dataclass(frozen=True)
+class RetryPolicy:
+    """Validated capped exponential backoff policy with bounded jitter."""
+
+    initial_delay: float = 1
+    max_delay: float = 60
+    jitter_ratio: float = 0.2
+
+    def __post_init__(self):
+        if self.initial_delay <= 0 or self.max_delay <= 0:
+            raise ValueError("retry delays must be positive")
+        if self.initial_delay > self.max_delay:
+            raise ValueError("initial retry delay cannot exceed maximum retry delay")
+        if not 0 <= self.jitter_ratio <= 1:
+            raise ValueError("retry jitter must be between 0 and 1")
+
+    def delay(self, attempt, random_value=None):
+        if attempt < 1:
+            raise ValueError("attempt must be at least 1")
+        random_value = random.random() if random_value is None else random_value
+        if not 0 <= random_value <= 1:
+            raise ValueError("random_value must be between 0 and 1")
+        exponential = self.initial_delay * (2 ** min(attempt - 1, 62))
+        capped = min(self.max_delay, exponential)
+        return capped * ((1 - self.jitter_ratio) + (self.jitter_ratio * random_value))
+
+
+class DeliveryHealth:
+    """Own delivery state, Prometheus metrics, and metrics-server lifecycle."""
+
+    def __init__(self):
+        self.watermark = None
+        self.consecutive_failures_count = 0
+        self._metrics_server = None
+        self._metrics_thread = None
+        self.registry = CollectorRegistry()
+        self.last_success = Gauge(
+            "pihole_logs_exporter_last_successful_loki_push_timestamp_seconds",
+            "Unix timestamp of the last successful Loki push.",
+            registry=self.registry,
+        )
+        self.consecutive_failures = Gauge(
+            "pihole_logs_exporter_consecutive_loki_push_failures",
+            "Number of consecutive Loki push failures.",
+            registry=self.registry,
+        )
+        self.export_lag = Gauge(
+            "pihole_logs_exporter_export_lag_seconds",
+            "Seconds between the current time and the persisted export watermark.",
+            registry=self.registry,
+        )
+        self.export_lag.set_function(
+            lambda: max(0, time.time() - self.watermark)
+            if self.watermark is not None
+            else 0
+        )
+
+    def set_watermark(self, timestamp):
+        self.watermark = timestamp
+
+    def record_push_failure(self):
+        self.consecutive_failures_count += 1
+        self.consecutive_failures.set(self.consecutive_failures_count)
+
+    def record_push_success(self):
+        self.consecutive_failures_count = 0
+        self.consecutive_failures.set(0)
+        self.last_success.set(time.time())
+
+    def start_server(self, address, port):
+        self._metrics_server, self._metrics_thread = start_http_server(
+            port,
+            addr=address,
+            registry=self.registry,
+        )
+        logging.info("Delivery metrics listening on http://%s:%d/metrics", address, port)
+
+    def stop_server(self):
+        if self._metrics_server is None:
+            return
+        self._metrics_server.shutdown()
+        self._metrics_server.server_close()
+        self._metrics_thread.join(timeout=1)
+        self._metrics_server = None
+        self._metrics_thread = None
+
+
+class ContinuousExporter:
+    """Supervise one-shot exports and retry only transient Loki failures."""
+
+    def __init__(
+        self,
+        exporter,
+        delivery_health,
+        retry_policy=None,
+        poll_interval=30,
+        stop_event=None,
+        random_fn=random.random,
+    ):
+        if poll_interval <= 0:
+            raise ValueError("poll_interval must be positive")
+        self.exporter = exporter
+        self.delivery_health = delivery_health
+        self.retry_policy = retry_policy or RetryPolicy()
+        self.poll_interval = poll_interval
+        self.stop_event = stop_event or threading.Event()
+        self.random_fn = random_fn
+
+    def run(self):
+        logging.info("Starting continuous export mode with poll interval %.3fs", self.poll_interval)
+
+        while not self.stop_event.is_set():
+            try:
+                self.exporter.run()
+            except LokiPushError as error:
+                if not error.transient:
+                    logging.error(
+                        "Permanent Loki failure; continuous mode is stopping: classification=permanent reason=%s status=%s",
+                        error.reason,
+                        error.status_code if error.status_code is not None else "none",
+                    )
+                    raise
+                attempt = self.delivery_health.consecutive_failures_count
+                delay = self.retry_policy.delay(attempt, self.random_fn())
+                logging.warning(
+                    "Retrying Loki push: classification=transient reason=%s status=%s attempt=%d next_retry_seconds=%.3f",
+                    error.reason,
+                    error.status_code if error.status_code is not None else "none",
+                    attempt,
+                    delay,
+                )
+                if self.stop_event.wait(delay):
+                    break
+                continue
+
+            if self.stop_event.wait(self.poll_interval):
+                break
+
+        logging.info("Continuous export mode stopped cleanly")
+
+
+def safe_url(url):
+    """Return only a URL's scheme and host so logs cannot expose credentials."""
+    if not url:
+        return "<unset>"
+    try:
+        parsed = urlsplit(url)
+        hostname = parsed.hostname or ""
+        if ":" in hostname:
+            hostname = f"[{hostname}]"
+        if parsed.port:
+            hostname = f"{hostname}:{parsed.port}"
+        return urlunsplit((parsed.scheme, hostname, "", "", ""))
+    except (TypeError, ValueError):
+        return "<invalid URL>"
+
 
 class PiholeLogsExporter:
     """
@@ -17,7 +195,7 @@ class PiholeLogsExporter:
     CACHE_TTL = 3600
     DEFAULT_LOOKBACK_SECONDS = 1800
 
-    def __init__(self, host, key, loki_target, state_file, server_name=None):
+    def __init__(self, host, key, loki_target, state_file, server_name=None, delivery_health=None):
         # Prefer environment variable if set, otherwise use provided host
         env_host = os.getenv('PIHOLE_URL')
         if env_host:
@@ -34,11 +212,18 @@ class PiholeLogsExporter:
         self.using_auth = False
         self.sid = None
         self.hostname_cache = {}
+        self.persisted_watermark = None
+        self.delivery_health = delivery_health
 
         # Disable SSL warnings for self-signed certificates
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-        logging.info(f"Initializing Pi-hole Logs Exporter with host: {host}, loki_target: {loki_target}, state_file: {state_file}")
+        logging.info(
+            "Initializing Pi-hole Logs Exporter with host: %s, loki_target: %s, state_file: %s",
+            host,
+            safe_url(loki_target),
+            state_file,
+        )
 
         if key is not None:
             self.using_auth = True
@@ -189,28 +374,59 @@ class PiholeLogsExporter:
                 content = f.read().strip()
                 if not content:
                     ts = int(time.time()) - self.DEFAULT_LOOKBACK_SECONDS
+                    self.persisted_watermark = ts
+                    if self.delivery_health:
+                        self.delivery_health.set_watermark(ts)
                     logging.info(f"State file {self.state_file} is empty. Starting from {self.DEFAULT_LOOKBACK_SECONDS} seconds ago (timestamp {ts}).")
                     return ts
                 timestamp = int(content)
+                self.persisted_watermark = timestamp
+                if self.delivery_health:
+                    self.delivery_health.set_watermark(timestamp)
                 logging.info(f"Read last timestamp from state file: {timestamp} ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))})")
                 return timestamp
         except FileNotFoundError:
             ts = int(time.time()) - self.DEFAULT_LOOKBACK_SECONDS
+            self.persisted_watermark = ts
+            if self.delivery_health:
+                self.delivery_health.set_watermark(ts)
             logging.info(f"State file not found at {self.state_file}. Starting from {self.DEFAULT_LOOKBACK_SECONDS} seconds ago (timestamp {ts}).")
             return ts
         except (ValueError, TypeError) as e:
             logging.error(f"Invalid timestamp in state file: {e}. Starting fresh.")
-            return int(time.time()) - self.DEFAULT_LOOKBACK_SECONDS
+            ts = int(time.time()) - self.DEFAULT_LOOKBACK_SECONDS
+            self.persisted_watermark = ts
+            if self.delivery_health:
+                self.delivery_health.set_watermark(ts)
+            return ts
 
     def write_last_timestamp(self, timestamp):
-        """Writes the latest timestamp to the state file."""
+        """Atomically writes the latest timestamp to the state file."""
+        state_path = os.path.abspath(self.state_file)
+        state_dir = os.path.dirname(state_path)
+        temp_path = None
         try:
-            with open(self.state_file, 'w') as f:
+            os.makedirs(state_dir, exist_ok=True)
+            fd, temp_path = tempfile.mkstemp(prefix=f".{os.path.basename(state_path)}.", dir=state_dir)
+            with os.fdopen(fd, 'w') as f:
                 f.write(str(timestamp))
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_path, state_path)
+            temp_path = None
+            self.persisted_watermark = timestamp
+            if self.delivery_health:
+                self.delivery_health.set_watermark(timestamp)
             logging.info(f"Wrote timestamp to state file: {timestamp} ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))})")
-        except IOError as e:
+        except OSError as e:
             logging.error(f"Error writing to state file {self.state_file}: {e}")
             raise
+        finally:
+            if temp_path:
+                try:
+                    os.unlink(temp_path)
+                except FileNotFoundError:
+                    pass
 
     def resolve_hostname(self, ip):
         """Resolve an IP address to a hostname with caching. Returns only the short hostname."""
@@ -317,20 +533,46 @@ class PiholeLogsExporter:
         headers = {"Content-Type": "application/json"}
         loki_url = self.get_loki_url()
 
-        logging.info(f"Sending {len(streams)} streams to Loki at {loki_url}")
+        logging.info(f"Sending {len(streams)} streams to Loki at {safe_url(loki_url)}")
         log_count = sum(len(s['values']) for s in streams)
         logging.info(f"Total log entries to send: {log_count}")
 
         try:
             response = requests.post(loki_url, data=json.dumps(payload), headers=headers, timeout=15)
-            response.raise_for_status()
+        except requests.exceptions.Timeout:
+            self._record_loki_failure()
+            logging.warning("Loki push classification=transient reason=timeout")
+            raise LokiPushError("timeout", transient=True) from None
+        except requests.exceptions.ConnectionError:
+            self._record_loki_failure()
+            logging.warning("Loki push classification=transient reason=connection_error")
+            raise LokiPushError("connection_error", transient=True) from None
+        except requests.exceptions.RequestException:
+            self._record_loki_failure()
+            logging.error("Loki push classification=permanent reason=request_error")
+            raise LokiPushError("request_error", transient=False) from None
+
+        status_code = response.status_code
+        if 200 <= status_code < 300:
+            if self.delivery_health:
+                self.delivery_health.record_push_success()
             logging.info(f"Successfully sent {log_count} log entries to Loki.")
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Failed to send logs to Loki: {e}")
-            if hasattr(e, 'response') and e.response is not None:
-                logging.error(f"Loki response status: {e.response.status_code}")
-                logging.error(f"Loki response body: {e.response.text}")
-            raise
+            return
+
+        transient = status_code == 429 or 500 <= status_code < 600
+        classification = "transient" if transient else "permanent"
+        self._record_loki_failure()
+        logging.log(
+            logging.WARNING if transient else logging.ERROR,
+            "Loki push classification=%s reason=http_status status=%d",
+            classification,
+            status_code,
+        )
+        raise LokiPushError("http_status", transient=transient, status_code=status_code)
+
+    def _record_loki_failure(self):
+        if self.delivery_health:
+            self.delivery_health.record_push_failure()
 
     def get_loki_url(self):
         """Generate the full Loki URL from the target."""
@@ -338,13 +580,12 @@ class PiholeLogsExporter:
         if not self.loki_target or self.loki_target.strip() == "":
             raise ValueError("LOKI_URL environment variable is not set or is empty")
 
-        # Check if the target is just a path (missing scheme and hostname)
-        if self.loki_target.startswith('/'):
-            raise ValueError(f"LOKI_URL is just a path '{self.loki_target}'. Please provide a complete URL with scheme and hostname (e.g., http://localhost:3100)")
-
-        # Check if the target has a scheme
-        if not self.loki_target.startswith(('http://', 'https://')):
-            raise ValueError(f"LOKI_URL missing scheme '{self.loki_target}'. Please provide a complete URL with http:// or https://")
+        try:
+            parsed = urlsplit(self.loki_target)
+        except ValueError as e:
+            raise ValueError("LOKI_URL is invalid. Please provide a complete HTTP(S) URL") from e
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            raise ValueError("LOKI_URL must be a complete URL with http:// or https:// and a hostname")
 
         return f"{self.loki_target.rstrip('/')}/loki/api/v1/push"
 
@@ -359,7 +600,7 @@ class PiholeLogsExporter:
                 logging.error("Session ID is missing at start of run! This should not happen.")
 
         loki_url = self.get_loki_url()
-        logging.info(f"Loki target validated: {loki_url}")
+        logging.info(f"Loki target validated: {safe_url(loki_url)}")
 
         last_ts = self.read_last_timestamp()
         current_ts = int(time.time())
@@ -396,6 +637,11 @@ def setup_logging(log_level, log_file=None):
     # Create logger
     logger = logging.getLogger()
     logger.setLevel(getattr(logging, log_level.upper()))
+
+    # urllib3 DEBUG records include raw HTTP request targets, which may carry
+    # Loki tenant paths or query-string credentials. Keep transport logs above
+    # DEBUG even when application-level debugging is enabled.
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     # Clear any existing handlers
     logger.handlers.clear()
@@ -435,7 +681,7 @@ if __name__ == '__main__':
     parser.add_argument("-k", "--key", dest="key", type=str, required=False, default=os.getenv("PIHOLE_API_TOKEN"),
                         help="Pi-hole API token. Can also be set via PIHOLE_API_TOKEN env var.")
     parser.add_argument("-t", "--loki-target", dest="loki_target", type=str, required=False, default=os.getenv("LOKI_TARGET"),
-                        help="URL of the Loki/Alloy push API endpoint (e.g., http://localhost:3100). Can also be set via LOKI_TARGET env var.")
+                        help="Base URL of the Loki/Alloy server (e.g., http://localhost:3100). Can also be set via LOKI_TARGET env var.")
     parser.add_argument("-s", "--state-file", dest="state_file", type=str, required=False, default="/var/tmp/pihole_logs_exporter.state",
                         help="Path to the state file for storing the last timestamp.")
     parser.add_argument("--server", dest="server_name", type=str, required=False, default=os.getenv("SERVER_NAME"),
@@ -445,25 +691,55 @@ if __name__ == '__main__':
                         help="Set the logging level.")
     parser.add_argument("--log-file", dest="log_file", type=str, required=False, default="/var/log/pihole6_exporter/pihole_logs_exporter.log",
                         help="Path to the log file for detailed logging.")
+    parser.add_argument("--continuous", action="store_true",
+                        help="Keep running and retry transient Loki failures. One-shot mode remains the default.")
+    parser.add_argument("--poll-interval", type=float, default=30,
+                        help="Seconds between successful runs in continuous mode.")
+    parser.add_argument("--retry-initial-delay", type=float, default=1,
+                        help="Initial retry delay in seconds for transient Loki failures.")
+    parser.add_argument("--retry-max-delay", type=float, default=60,
+                        help="Maximum retry delay in seconds for transient Loki failures.")
+    parser.add_argument("--retry-jitter", type=float, default=0.2,
+                        help="Downward jitter ratio from 0 to 1 for retry delays.")
+    parser.add_argument("--metrics-address", default="0.0.0.0",
+                        help="Address for the continuous-mode Prometheus endpoint.")
+    parser.add_argument("--metrics-port", type=int, default=9101,
+                        help="Port for the continuous-mode Prometheus endpoint.")
 
     args = parser.parse_args()
 
     # Validate required arguments
     if not args.loki_target:
         parser.error("LOKI_TARGET must be provided either via -t/--loki-target argument or LOKI_TARGET environment variable")
+    retry_policy = None
+    if args.continuous:
+        if args.poll_interval <= 0:
+            parser.error("--poll-interval must be positive")
+        if not 1 <= args.metrics_port <= 65535:
+            parser.error("--metrics-port must be between 1 and 65535")
+        try:
+            retry_policy = RetryPolicy(
+                initial_delay=args.retry_initial_delay,
+                max_delay=args.retry_max_delay,
+                jitter_ratio=args.retry_jitter,
+            )
+        except ValueError as error:
+            parser.error(str(error))
 
     # Setup logging
     setup_logging(args.log_level, args.log_file)
     logging.info("=== Pi-hole Logs Exporter Starting ===")
     logging.info(f"Configuration:")
     logging.info(f"  Pi-hole host: {args.host}")
-    logging.info(f"  Loki target: {args.loki_target}")
+    logging.info(f"  Loki target: {safe_url(args.loki_target)}")
     logging.info(f"  State file: {args.state_file}")
     logging.info(f"  Server name: {args.server_name or socket.gethostname() or 'unknown'}")
     logging.info(f"  Log level: {args.log_level}")
     logging.info(f"  Log file: {args.log_file}")
+    logging.info(f"  Mode: {'continuous' if args.continuous else 'one-shot'}")
 
     exporter = None
+    delivery_health = DeliveryHealth() if args.continuous else None
     try:
         logging.info("Creating Pi-hole Logs Exporter instance...")
         exporter = PiholeLogsExporter(
@@ -471,16 +747,42 @@ if __name__ == '__main__':
             key=args.key,
             loki_target=args.loki_target,
             state_file=args.state_file,
-            server_name=args.server_name
+            server_name=args.server_name,
+            delivery_health=delivery_health,
         )
-        logging.info("Starting log export run...")
-        exporter.run()
+        if args.continuous:
+            stop_event = threading.Event()
+
+            def request_shutdown(signum, _frame):
+                logging.info("Received signal %s; requesting clean shutdown", signum)
+                stop_event.set()
+
+            signal.signal(signal.SIGTERM, request_shutdown)
+            signal.signal(signal.SIGINT, request_shutdown)
+            delivery_health.start_server(args.metrics_address, args.metrics_port)
+            supervisor = ContinuousExporter(
+                exporter=exporter,
+                delivery_health=delivery_health,
+                retry_policy=retry_policy,
+                poll_interval=args.poll_interval,
+                stop_event=stop_event,
+            )
+            supervisor.run()
+        else:
+            logging.info("Starting one-shot log export run...")
+            exporter.run()
         logging.info("=== Pi-hole Logs Exporter Completed Successfully ===")
+    except LokiPushError as e:
+        logging.critical("Exporter failed to deliver logs: %s", e)
+        logging.error("=== Pi-hole Logs Exporter Failed ===")
+        exit(1)
     except Exception as e:
         logging.critical(f"Exporter failed to initialize or run: {e}", exc_info=True)
         logging.error("=== Pi-hole Logs Exporter Failed ===")
         exit(1)
     finally:
+        if delivery_health:
+            delivery_health.stop_server()
         # Ensure logout happens even if initialization fails
         if exporter:
             logging.info("Ensuring logout from Pi-hole API session")
