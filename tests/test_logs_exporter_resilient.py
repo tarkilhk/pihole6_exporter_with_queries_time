@@ -192,7 +192,7 @@ def test_cli_failure_trace_never_exposes_loki_url_secrets(tmp_path):
         requests.exceptions.Timeout("read timed out"),
     ],
 )
-def test_exporter_retries_connection_and_timeout_then_succeeds(tmp_path, failure):
+def test_exporter_retries_loki_connection_and_timeout_then_succeeds(tmp_path, failure):
     exporter, state_file = make_exporter(tmp_path)
     stopped = threading.Event()
     original_write = exporter.write_last_timestamp
@@ -212,6 +212,57 @@ def test_exporter_retries_connection_and_timeout_then_succeeds(tmp_path, failure
     assert fetch.call_count == 2
     assert state_file.read_text() == "150"
     assert exporter.delivery_health.consecutive_failures_count == 0
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        requests.exceptions.ConnectionError("connection refused"),
+        requests.exceptions.ReadTimeout("read timed out"),
+    ],
+)
+def test_continuous_exporter_retries_transient_pihole_failure_then_succeeds(failure):
+    stopped = threading.Event()
+    exporter = Mock()
+    attempts = 0
+
+    def fail_then_succeed():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise failure
+        stopped.set()
+
+    exporter.export_once.side_effect = fail_then_succeed
+    supervisor = ContinuousExporter(
+        exporter=exporter,
+        delivery_health=DeliveryHealth(),
+        retry_policy=RetryPolicy(initial_delay=0.001, max_delay=0.001, jitter_ratio=0),
+        poll_interval=1,
+        stop_event=stopped,
+    )
+
+    supervisor.run()
+
+    assert exporter.export_once.call_count == 2
+
+
+def test_continuous_exporter_does_not_retry_permanent_pihole_http_error():
+    response = Mock(status_code=403)
+    failure = requests.exceptions.HTTPError("forbidden", response=response)
+    exporter = Mock()
+    exporter.export_once.side_effect = failure
+    supervisor = ContinuousExporter(
+        exporter=exporter,
+        delivery_health=DeliveryHealth(),
+        retry_policy=RetryPolicy(initial_delay=0.001, max_delay=0.001, jitter_ratio=0),
+        poll_interval=1,
+    )
+
+    with pytest.raises(requests.exceptions.HTTPError):
+        supervisor.run()
+
+    assert exporter.export_once.call_count == 1
 
 
 @pytest.mark.parametrize("status_code", [429, 500, 503])
