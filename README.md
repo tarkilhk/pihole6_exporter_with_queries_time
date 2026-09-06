@@ -50,7 +50,7 @@ python pihole6_logs_exporter.py -H http://localhost:80 -k YOUR_API_TOKEN -t http
 ```
 
 The logs exporter is a long-running process that polls every 30 seconds, retries
-transient Loki outages with capped exponential backoff, and exposes
+transient Pi-hole API and Loki outages with capped exponential backoff, and exposes
 delivery-health metrics on port 9101. See
 [logs_exporter/README.md](logs_exporter/README.md) for retry, shutdown, metrics,
 and alerting details.

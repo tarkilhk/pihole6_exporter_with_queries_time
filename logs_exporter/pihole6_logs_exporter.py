@@ -708,9 +708,9 @@ if __name__ == '__main__':
     parser.add_argument("--poll-interval", type=float, default=30,
                         help="Seconds between successful export cycles.")
     parser.add_argument("--retry-initial-delay", type=float, default=1,
-                        help="Initial retry delay in seconds for transient Loki failures.")
+                        help="Initial retry delay in seconds for transient Pi-hole API and Loki failures.")
     parser.add_argument("--retry-max-delay", type=float, default=60,
-                        help="Maximum retry delay in seconds for transient Loki failures.")
+                        help="Maximum retry delay in seconds for transient Pi-hole API and Loki failures.")
     parser.add_argument("--retry-jitter", type=float, default=0.2,
                         help="Downward jitter ratio from 0 to 1 for retry delays.")
     parser.add_argument("--metrics-address", default="0.0.0.0",

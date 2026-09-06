@@ -36,8 +36,9 @@ The service uses environment variables that can be set in `/etc/pihole6_exporter
 ### Running the exporter
 
 The exporter always runs as a long-lived process. It polls Pi-hole every 30
-seconds by default and keeps the same process alive when Loki has a transient
-DNS, connection, timeout, HTTP 429, or HTTP 5xx failure:
+seconds by default and keeps the same process alive across transient Pi-hole
+API timeouts and connection failures, and across Loki DNS, connection, timeout,
+HTTP 429, or HTTP 5xx failures:
 
 ```bash
 python pihole6_logs_exporter.py \
@@ -54,15 +55,17 @@ python pihole6_logs_exporter.py \
 
 Retry delays use capped exponential backoff. The jitter value is a ratio: the
 default `0.2` randomly selects a delay from 80% through 100% of the capped
-exponential delay. A successful Loki push resets the failure count and backoff.
-SIGTERM and SIGINT interrupt both retry and polling waits so container shutdown
-does not have to wait for the delay to expire.
+exponential delay. A successful export cycle resets the Pi-hole retry count. A
+successful Loki push resets the Loki failure count and backoff. SIGTERM and
+SIGINT interrupt both retry and polling waits so container shutdown does not
+have to wait for the delay to expire.
 
-HTTP 400, 401, 403, and other non-429 4xx responses are classified as permanent
-and stop the process. Missing or malformed Loki URLs and invalid Pi-hole
-credentials also fail fast. Logs contain the classification, attempt number,
-and next delay but log only the Loki URL scheme and host, omitting URL paths,
-credentials, query strings, and response bodies.
+Loki HTTP 400, 401, 403, and other non-429 4xx responses are classified as
+permanent and stop the process. Pi-hole HTTP errors also fail fast. Missing or
+malformed Loki URLs and invalid Pi-hole credentials fail fast as well. Logs
+contain the classification, attempt number, and next delay but log only the
+Loki URL scheme and host, omitting URL paths, credentials, query strings, and
+response bodies.
 
 The persisted watermark is written atomically and changes only after Loki
 accepts a batch. A transient failure therefore causes the next attempt in the
@@ -102,6 +105,6 @@ pihole_logs_exporter_consecutive_loki_push_failures > 0
 - Maintains an atomic watermark state file to avoid skipped log entries
 - Resolves client IPs to hostnames
 - Configurable initial history fetch
-- Exits non-zero on authentication, Pi-hole API, permanent Loki, configuration, or state-write failures
+- Exits non-zero on authentication, permanent Pi-hole HTTP, permanent Loki, configuration, or state-write failures
 - Runs continuously with classified retry/backoff and Prometheus health metrics
 - Polls every 30 seconds by default
