@@ -119,7 +119,7 @@ class DeliveryHealth:
 
 
 class ContinuousExporter:
-    """Supervise export cycles and retry only transient Loki failures."""
+    """Supervise export cycles and retry transient dependency failures."""
 
     def __init__(
         self,
@@ -141,10 +141,23 @@ class ContinuousExporter:
 
     def run(self):
         logging.info("Starting continuous export mode with poll interval %.3fs", self.poll_interval)
+        pihole_failure_attempt = 0
 
         while not self.stop_event.is_set():
             try:
                 self.exporter.export_once()
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as error:
+                pihole_failure_attempt += 1
+                delay = self.retry_policy.delay(pihole_failure_attempt, self.random_fn())
+                logging.warning(
+                    "Retrying Pi-hole API request: classification=transient error_type=%s attempt=%d next_retry_seconds=%.3f",
+                    type(error).__name__,
+                    pihole_failure_attempt,
+                    delay,
+                )
+                if self.stop_event.wait(delay):
+                    break
+                continue
             except LokiPushError as error:
                 if not error.transient:
                     logging.error(
@@ -166,6 +179,7 @@ class ContinuousExporter:
                     break
                 continue
 
+            pihole_failure_attempt = 0
             if self.stop_event.wait(self.poll_interval):
                 break
 
